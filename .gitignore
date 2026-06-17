@@ -1,0 +1,11 @@
+# .gitignore
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+qdrant_data/
+langfuse_data/
+*.egg-info/
+dist/
+.venv/
+corpus/
