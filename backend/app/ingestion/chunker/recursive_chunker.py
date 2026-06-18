@@ -1,10 +1,10 @@
-from backend.app.ingestion.loader import Document
+from app.ingestion.loader import Document
 
-from .base_chunker import BaseChunker, Chunk
+from .base_chunker import BaseChunker, Chunk, ChunkStrategy
 
 
 class RecursiveChunker(BaseChunker):
-    strategy_name = "recursive"
+    strategy_name = ChunkStrategy.RECURSIVE
 
     def chunk_document(self, doc: Document) -> list[Chunk]:
         # first recursively split the document text into smaller chunks

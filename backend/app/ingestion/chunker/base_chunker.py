@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import StrEnum
 
 import tiktoken
 
-from backend.app.ingestion.loader import Document
+from app.ingestion.loader import Document
 
 
 @dataclass
@@ -21,6 +22,12 @@ class Chunk:
 
 
 DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " "]
+
+
+class ChunkStrategy(StrEnum):
+    FIXED_SIZE = "fixed_size"
+    RECURSIVE = "recursive"
+    STRUCTURE_AWARE = "structure_aware"
 
 
 class BaseChunker(ABC):
@@ -42,7 +49,9 @@ class BaseChunker(ABC):
         for doc in docs:
             doc_chunks = self.chunk_document(doc)
             all_chunks.extend(doc_chunks)
-            print(f"  [{self.strategy_name}] {doc.doc_id}: {len(doc_chunks)} chunks")
+            print(
+                f"  [{self.strategy_name}] {doc.doc_id}: {len(doc_chunks)} chunks"
+            )
         return all_chunks
 
     def _make_chunk(self, doc: Document, text: str, chunk_index: int) -> Chunk:
