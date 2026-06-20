@@ -9,3 +9,4 @@ langfuse_data/
 dist/
 .venv/
 corpus/
+superpowers/

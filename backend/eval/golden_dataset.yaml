@@ -1,0 +1,213 @@
+queries:
+- query: What is the purpose of the retrieval component in RAG models?
+  items:
+  - doc_id: rag-paper
+    snippet: The retrieval component pη(z|x) is based on DPR [26].
+- query: How does RAG-Sequence differ from RAG-Token in terms of document usage?
+  items:
+  - doc_id: rag-paper
+    snippet: The RAG-Sequence model uses the same retrieved document to generate the
+      complete sequence.
+- query: What is the main contribution of the paper 'Attention Is All You Need'?
+  items:
+  - doc_id: attention-paper
+    snippet: We propose a new simple network architecture, the Transformer, based
+      solely on attention mechanisms, dispensing with recurrence and convolutions
+      entirely.
+- query: What is the dimensionality of the input and output in the Transformer's encoder
+    and decoder?
+  items:
+  - doc_id: attention-paper
+    snippet: The dimensionality of input and output is dmodel = 512, and the inner-layer
+      has dimensionality dff = 2048.
+- query: What is the purpose of the WikiEval dataset?
+  items:
+  - doc_id: ragas-paper
+    snippet: To evaluate the proposed framework, we ideally need examples of question-context-answer
+      triples which are annotated with human judgments.
+- query: What programming language is Qdrant written in?
+  items:
+  - doc_id: qdrant-readme
+    snippet: Qdrant is written in Rust 🦀, which makes it fast and reliable even under
+      high load.
+- query: What is Qdrant Cloud?
+  items:
+  - doc_id: qdrant-readme
+    snippet: Qdrant is also available as a fully managed **[Qdrant Cloud](https://cloud.qdrant.io/)**
+      ⛅ including a **free tier**.
+- query: What is Qdrant Edge designed for?
+  items:
+  - doc_id: qdrant-readme
+    snippet: '[Qdrant Edge](https://qdrant.tech/documentation/edge/) is a lightweight
+      version of Qdrant designed for edge devices and resource-constrained environments.'
+- query: What type of search does Qdrant support?
+  items:
+  - doc_id: qdrant-readme
+    snippet: Qdrant supports dense vectors for semantic similarity, sparse vectors
+      for full-text search, and multivector search for objects with multiple embeddings
+      or late interaction models like ColBERT.
+- query: What is the purpose of the Web UI in Qdrant?
+  items:
+  - doc_id: qdrant-readme
+    snippet: Web UI provides a visual way to interact with your data and monitor the
+      health of your deployment.
+- query: What is Langfuse?
+  items:
+  - doc_id: langfuse-readme
+    snippet: Langfuse is an **open source LLM engineering** platform.
+- query: How can Langfuse be deployed?
+  items:
+  - doc_id: langfuse-readme
+    snippet: Langfuse can be **self-hosted in minutes** and is **battle-tested**.
+- query: What is the preferred production deployment method for Langfuse?
+  items:
+  - doc_id: langfuse-readme
+    snippet: Run Langfuse on a Kubernetes cluster using Helm. This is the preferred
+      production deployment.
+- query: What kind of license does Langfuse use?
+  items:
+  - doc_id: langfuse-readme
+    snippet: This repository is MIT licensed, except for the `ee` folders.
+- query: Where can I report a bug for Langfuse?
+  items:
+  - doc_id: langfuse-readme
+    snippet: Report a Bug](https://github.com/langfuse/langfuse/issues) on GitHub
+      Issues.
+- query: What is FastAPI based on?
+  items:
+  - doc_id: fastapi-readme
+    snippet: FastAPI is a modern, fast (high-performance), web framework for building
+      APIs with Python based on standard Python type hints.
+- query: What is the purpose of the 'fastapi dev' command?
+  items:
+  - doc_id: fastapi-readme
+    snippet: The command `fastapi dev` reads your `main.py` file automatically, detects
+      the **FastAPI** app in it, and starts a server using [Uvicorn](https://www.uvicorn.dev).
+- query: What is the primary sponsor and funding provider for FastAPI?
+  items:
+  - doc_id: fastapi-readme
+    snippet: FastAPI Cloud is the primary sponsor and funding provider for the *FastAPI
+      and friends* open source projects.
+- query: What is the main purpose of Ragas?
+  items:
+  - doc_id: ragas-readme
+    snippet: Ragas is your ultimate toolkit for evaluating and optimizing Large Language
+      Model (LLM) applications.
+- query: What programming language is Ragas made with?
+  items:
+  - doc_id: ragas-readme
+    snippet: Made with Python
+- query: How can you install Ragas from PyPI?
+  items:
+  - doc_id: ragas-readme
+    snippet: pip install ragas
+- query: What is one of the key features of Ragas?
+  items:
+  - doc_id: ragas-readme
+    snippet: 'Objective Metrics: Evaluate your LLM applications with precision using
+      both LLM-based and traditional metrics.'
+- query: How can you opt-out of Ragas' data collection?
+  items:
+  - doc_id: ragas-readme
+    snippet: To opt-out, set the `RAGAS_DO_NOT_TRACK` environment variable to `true`.
+- query: How can I install the open source version of tiktoken?
+  items:
+  - doc_id: tiktoken-readme
+    snippet: 'The open source version of `tiktoken` can be installed from [PyPI](https://pypi.org/project/tiktoken):'
+- query: What is the performance advantage of tiktoken compared to other tokenisers?
+  items:
+  - doc_id: tiktoken-readme
+    snippet: '`tiktoken` is between 3-6x faster than a comparable open source tokeniser:'
+- query: Where can I find example code using tiktoken?
+  items:
+  - doc_id: tiktoken-readme
+    snippet: Example code using `tiktoken` can be found in the [OpenAI Cookbook](https://github.com/openai/openai-cookbook/blob/main/examples/How_to_count_tokens_with_tiktoken.ipynb).
+- query: What is one of the desirable properties of Byte Pair Encoding (BPE)?
+  items:
+  - doc_id: tiktoken-readme
+    snippet: It's reversible and lossless, so you can convert tokens back into the
+      original text
+- query: How can I get help with tiktoken?
+  items:
+  - doc_id: tiktoken-readme
+    snippet: Please post questions in the [issue tracker](https://github.com/openai/tiktoken/issues).
+- query: What is the main advantage of hybrid models that combine parametric and non-parametric
+    memories?
+  items:
+  - doc_id: rag-paper
+    snippet: Hybrid models that combine parametric memory with non-parametric (i.e.,
+      retrieval-based) memories [20, 26, 48] can address some of these issues because
+      knowledge can be directly revised and expanded, and accessed knowledge can be
+      inspected and interpreted.
+- query: What is the main benefit of RAG models for language generation tasks?
+  items:
+  - doc_id: rag-paper
+    snippet: For language generation tasks, we ﬁnd that RAG models generate more speciﬁc,
+      diverse and factual language than a state-of-the-art parametric-only seq2seq
+      baseline.
+- query: What is the role of the BART model in RAG?
+  items:
+  - doc_id: rag-paper
+    snippet: The generator component pθ(yi|x, z, y1:i−1) could be modelled using any
+      encoder-decoder. We use BART-large [32], a pre-trained seq2seq transformer [58]
+      with 400M parameters.
+- query: What BLEU score did the Transformer achieve on the WMT 2014 English-to-German
+    translation task?
+  items:
+  - doc_id: attention-paper
+    snippet: Our model achieves 28.4 BLEU on the WMT 2014 English- to-German translation
+      task, improving over the existing best results, including ensembles, by over
+      2 BLEU.
+- query: How long did it take to train the Transformer model for the WMT 2014 English-to-French
+    translation task?
+  items:
+  - doc_id: attention-paper
+    snippet: On the WMT 2014 English-to-French translation task, our model establishes
+      a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5
+      days on eight GPUs, a small fraction of the training costs of the best models
+      from the literature.
+- query: What type of attention mechanism does the Transformer use?
+  items:
+  - doc_id: attention-paper
+    snippet: We call our particular attention "Scaled Dot-Product Attention" (Figure
+      2).
+- query: What is Ragas and what does it aim to evaluate?
+  items:
+  - doc_id: ragas-paper
+    snippet: We introduce Ragas (Retrieval Augmented Generation Assessment), a framework
+      for reference-free evaluation of Retrieval Aug- mented Generation (RAG) pipelines.
+- query: What are the components of RAG systems?
+  items:
+  - doc_id: ragas-paper
+    snippet: RAG systems are composed of a retrieval and an LLM based generation module,
+      and provide LLMs with knowledge from a reference textual database, which enables
+      them to act as a natu- ral language layer between a user and textual databases,
+      reducing the risk of hallucinations.
+- query: Why is evaluating RAG architectures challenging?
+  items:
+  - doc_id: ragas-paper
+    snippet: ''
+- query: What are the three quality aspects focused on by the Ragas framework?
+  items:
+  - doc_id: ragas-paper
+    snippet: We focus in particular three quality aspects, which we argue are of central
+      importance. First, Faithfulness refers to the idea that the an- swer should
+      be grounded in the given context. This is important to avoid hallucinations,
+      and to ensure that the retrieved context can act as a justification for the
+      generated answer. Indeed, RAG systems are often used in applications where the
+      factual con- sistency of the generated text w.r.t. the grounded sources is highly
+      important, e.g. in domains such as law, where information is constantly evolving.
+      Sec- ond, Answer Relevance refers to the idea that the generated answer should
+      address the actual ques- tion that was provided. Finally, Context Relevance
+      refers to the idea that the retrieved context should be focused, containing
+      as little irrelevant informa- tion as possible.
+- query: What are the optional dependencies included with 'fastapi[standard]'?
+  items:
+  - doc_id: fastapi-readme
+    snippet: 'When you install FastAPI with `pip install "fastapi[standard]"` it comes
+      with the `standard` group of optional dependencies:'
+- query: What does the 'Fast to code' feature of FastAPI claim to increase?
+  items:
+  - doc_id: fastapi-readme
+    snippet: '**Fast to code**: Increase the speed to develop features by about 200%
+      to 300%.'

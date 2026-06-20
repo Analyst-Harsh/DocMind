@@ -16,13 +16,16 @@ class Settings(BaseSettings):
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
     llm_model: str = "gpt-4o-mini"
+    draft_generate_llm_model: str = "gpt-4o"
 
     # Langfuse settings
     langfuse_secret_key: str
     langfuse_public_key: str
     langfuse_base_url: str
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8"
+    )
 
 
 @lru_cache()
