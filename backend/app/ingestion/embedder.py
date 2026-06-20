@@ -38,10 +38,10 @@ def embed_chunks(chunks: list[Chunk]) -> list[tuple[Chunk, list[float]]]:
     return results
 
 
-def embed_query(text: str) -> list[float]:
-    """Embed a single query string at retrieval time."""
+def embed_query(text: str, model: str | None = None) -> list[float]:
+    """Embed a single query string. Defaults to the configured model."""
     response = client.embeddings.create(
         input=[text],
-        model=settings.embedding_model,
+        model=model or settings.embedding_model,
     )
     return response.data[0].embedding

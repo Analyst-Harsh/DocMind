@@ -1,13 +1,18 @@
 # app/ingestion/indexer.py
+import uuid
+
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
-    VectorParams,
     PointStruct,
+    VectorParams,
 )
+from structlog import get_logger
+
 from app.config import get_settings
 from app.ingestion.chunker import Chunk
 
+log = get_logger(__name__)
 settings = get_settings()
 
 
@@ -18,28 +23,41 @@ def get_qdrant_client() -> QdrantClient:
     )
 
 
-def ensure_collection(client: QdrantClient, vector_size: int = 1536):
+def collection_name_for(strategy: str, embedding_model: str) -> str:
+    """
+    One Qdrant collection per (strategy, embedding model) pair, e.g.
+    docmind_chunks_fixed_size_text-embedding-3-small. Trying a new
+    embedding model just creates new collections — prior models' data
+    is never overwritten.
+    """
+    return f"{settings.qdrant_collection}_{strategy}_{embedding_model}"
+
+
+def ensure_collection(
+    client: QdrantClient, collection_name: str, vector_size: int = 1536
+):
     """
     Create the Qdrant collection if it doesn't exist.
     Safe to call multiple times — won't overwrite existing data.
     """
     collections = [c.name for c in client.get_collections().collections]
 
-    if settings.qdrant_collection not in collections:
+    if collection_name not in collections:
         client.create_collection(
-            collection_name=settings.qdrant_collection,
+            collection_name=collection_name,
             vectors_config=VectorParams(
                 size=vector_size,
                 distance=Distance.COSINE,
             ),
         )
-        print(f"Created collection: {settings.qdrant_collection}")
+        log.info(f"Created collection: {collection_name}")
     else:
-        print(f"Collection already exists: {settings.qdrant_collection}")
+        log.info(f"Collection already exists: {collection_name}")
 
 
 def upsert_chunks(
     client: QdrantClient,
+    collection_name: str,
     chunk_embeddings: list[tuple[Chunk, list[float]]],
 ):
     """
@@ -53,7 +71,7 @@ def upsert_chunks(
             PointStruct(
                 # Qdrant requires integer or UUID ids
                 # We hash the chunk_id string to an int
-                id=abs(hash(chunk.chunk_id)) % (2**63),
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
                 vector=vector,
                 payload={
                     "chunk_id": chunk.chunk_id,
@@ -73,7 +91,7 @@ def upsert_chunks(
     for i in range(0, len(points), 100):
         batch = points[i : i + 100]
         client.upsert(
-            collection_name=settings.qdrant_collection,
+            collection_name=collection_name,
             points=batch,
         )
-    print(f"Upserted {len(points)} points into Qdrant")
+    log.info(f"Upserted {len(points)} points into {collection_name}")
