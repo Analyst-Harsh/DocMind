@@ -1,4 +1,3 @@
-# scripts/download_corpus.py
 """
 Downloads all corpus documents and writes manifest.yaml.
 Run once: python -m scripts.download_corpus
@@ -9,10 +8,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import time
+
+import certifi
 import requests
 import yaml
-import time
-import certifi
 
 CORPUS_DIR = Path(__file__).parent.parent / "corpus"
 
@@ -58,7 +58,13 @@ DOCUMENTS = [
         "url": "https://raw.githubusercontent.com/langfuse/langfuse/main/README.md",
         "dest": "repos/langfuse/README.md",
         "type": "markdown",
-        "tags": ["langfuse", "observability", "tracing", "evaluation", "tooling"],
+        "tags": [
+            "langfuse",
+            "observability",
+            "tracing",
+            "evaluation",
+            "tooling",
+        ],
     },
     {
         "doc_id": "fastapi-readme",
@@ -113,7 +119,7 @@ def download_file(url: str, dest_path: Path) -> bool:
         return False
 
 
-def write_manifest(documents: list[dict]):
+def write_manifest(documents: list[dict]) -> None:
     """
     Write manifest.yaml from the document definitions.
     Excludes the 'url' key — that's only needed for downloading.
@@ -141,7 +147,7 @@ def write_manifest(documents: list[dict]):
     print(f"\nWrote manifest.yaml with {len(manifest_entries)} entries")
 
 
-def print_corpus_stats():
+def print_corpus_stats() -> None:
     """Print a summary of what's in the corpus directory."""
     total_size = 0
     total_files = 0
@@ -157,7 +163,7 @@ def print_corpus_stats():
     print(f"───────────────────────────────────────────")
 
 
-def main():
+def main() -> None:
     print("=== DocMind Corpus Downloader ===\n")
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
 

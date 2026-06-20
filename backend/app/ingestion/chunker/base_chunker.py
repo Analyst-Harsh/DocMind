@@ -39,7 +39,7 @@ class BaseChunker(ABC):
         self.encoder = tiktoken.get_encoding("cl100k_base")
 
     @abstractmethod
-    def chunk_document(self, doc) -> list[Chunk]: ...
+    def chunk_document(self, doc: Document) -> list[Chunk]: ...
 
     def _get_default_separators(self) -> list[str]:
         return DEFAULT_SEPARATORS

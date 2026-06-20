@@ -5,11 +5,11 @@ chunks, so chunk boundaries can be eyeballed before Day 2's eval harness.
 Usage: python -m scripts.inspect_chunking
 """
 
+from app.ingestion.chunker import CHUNKER_REGISTRY, get_chunker
 from app.ingestion.loader import load_all_documents
-from app.ingestion.chunker import get_chunker, CHUNKER_REGISTRY
 
 
-def main():
+def main() -> None:
     docs = load_all_documents()
 
     for strategy_name in CHUNKER_REGISTRY:

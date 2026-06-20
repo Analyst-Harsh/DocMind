@@ -186,7 +186,13 @@ queries:
 - query: Why is evaluating RAG architectures challenging?
   items:
   - doc_id: ragas-paper
-    snippet: ''
+    snippet: >-
+      there are several dimensions to
+      consider: the ability of the retrieval system to
+      identify relevant and focused context passages,
+      the ability of the LLM to exploit such passages
+      in a faithful way, or the quality of the genera-
+      tion itself.
 - query: What are the three quality aspects focused on by the Ragas framework?
   items:
   - doc_id: ragas-paper

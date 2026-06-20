@@ -1,5 +1,6 @@
-# app/generation/prompts.py
-from jinja2 import Environment, BaseLoader, Template
+from jinja2 import BaseLoader, Environment, Template
+
+from app.retrieval.searcher import RetrievedChunk
 
 jinja_env = Environment(loader=BaseLoader())
 
@@ -27,6 +28,6 @@ Question: {{ question }}
 Answer:"""
 
 
-def build_qa_prompt(question: str, chunks: list) -> str:
+def build_qa_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
     template = Template(GROUNDED_QA_TEMPLATE)
     return template.render(question=question, chunks=chunks)
