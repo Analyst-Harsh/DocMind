@@ -48,12 +48,36 @@ change alone will fix.
 **Question:** Does BGE-large (local, free) retrieval quality justify
 replacing OpenAI embeddings (hosted, paid)?
 
-| Model                    | Precision@5 | Recall@5 | MRR  | Embed latency | Cost/1K tokens |
-|--------------------------|-------------|----------|------|---------------|----------------|
-| text-embedding-3-small   | —           | —        | —    | —             | $0.02          |
-| BGE-large-en-v1.5 (local)| —           | —        | —    | —             | $0.00          |
+Run against the same golden set as Experiment 1 (`eval/golden_dataset.yaml`).
 
-**Finding:** _Fill in after Day 4_
+**BGE-large-en-v1.5 (local)** — chunking strategy comparison, k=5:
+
+| Strategy       | Precision@5 | Recall@5 | MRR  | Avg chunk tokens | Total chunks |
+|----------------|-------------|----------|------|------------------|--------------|
+| fixed_size     | 0.155       | 0.775    | 0.592| 483              | 127          |
+| recursive      | 0.150       | 0.725    | 0.576| 478              | 137          |
+| structure_aware| 0.150       | 0.725    | 0.539| 467              | 139          |
+
+| Model                    | Embed latency | Cost/1K tokens |
+|--------------------------|---------------|----------------|
+| text-embedding-3-small   | —             | $0.02          |
+| BGE-large-en-v1.5 (local)| —             | $0.00          |
+
+**Finding:** Switching to BGE-large lowers retrieval quality across the
+board relative to OpenAI on every strategy and metric — e.g. recursive
+drops from P=0.175/R=0.850/MRR=0.617 (OpenAI, Experiment 1) to
+P=0.150/R=0.725/MRR=0.576 (BGE), and the best BGE strategy (fixed_size,
+P=0.155/R=0.775/MRR=0.592) still trails OpenAI's worst strategy
+(fixed_size, P=0.160/R=0.800/MRR=0.572) on recall and is roughly level on
+precision/MRR. BGE also reorders the strategy ranking: fixed_size leads
+under BGE, whereas recursive led under OpenAI — the chunking strategy that
+works best is embedding-model-dependent, not a universal property of the
+corpus.
+
+Given the recall gap (-0.10 to -0.125 across strategies) at zero marginal
+cost, BGE is a reasonable choice only if the quality drop is acceptable
+for the use case; if recall matters most, OpenAI's hosted embeddings
+currently justify their cost on this corpus.
 
 ---
 

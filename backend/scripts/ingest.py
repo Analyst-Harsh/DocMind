@@ -8,24 +8,19 @@ Usage:
 """
 
 import argparse
-import sys
-from pathlib import Path
 
-from dotenv import load_dotenv
+from qdrant_client import QdrantClient
 
-load_dotenv()
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.ingestion.loader import load_all_documents
-from app.ingestion.chunker import get_chunker, ChunkStrategy
-from app.ingestion.embedder import embed_chunks
-from app.ingestion.indexer import (
-    get_qdrant_client,
-    ensure_collection,
-    upsert_chunks,
-    collection_name_for,
-)
 from app.config import get_settings
+from app.ingestion.chunker import ChunkStrategy, get_chunker
+from app.ingestion.embedder import embed_chunks, get_embedding_dim
+from app.ingestion.indexer import (
+    collection_name_for,
+    ensure_collection,
+    get_qdrant_client,
+    upsert_chunks,
+)
+from app.ingestion.loader import load_all_documents
 
 
 def resolve_targets(strategy: str) -> list[str]:
@@ -37,8 +32,10 @@ def resolve_targets(strategy: str) -> list[str]:
     return [strategy]
 
 
-def ingest_strategy(strategy: str, docs, client, settings) -> None:
-    print(f"\n=== Ingesting strategy: {strategy} ===")
+def ingest_strategy(
+    strategy: str, docs, client: QdrantClient, model: str
+) -> None:
+    print(f"\n=== Ingesting strategy: {strategy} (model: {model}) ===")
     chunker = get_chunker(
         ChunkStrategy(strategy), chunk_size=500, chunk_overlap=50
     )
@@ -50,10 +47,10 @@ def ingest_strategy(strategy: str, docs, client, settings) -> None:
         f"  Tokens to embed: {total_tokens:,} "
         f"(~${(total_tokens / 1_000_000) * 0.02:.4f})"
     )
-    chunk_embeddings = embed_chunks(chunks)
+    chunk_embeddings = embed_chunks(chunks, model=model)
 
-    collection = collection_name_for(strategy, settings.embedding_model)
-    ensure_collection(client, collection)
+    collection = collection_name_for(strategy, model)
+    ensure_collection(client, collection, vector_size=get_embedding_dim(model))
     upsert_chunks(client, collection, chunk_embeddings)
     info = client.get_collection(collection)
     print(f"  {collection}: {info.points_count} points")
@@ -67,16 +64,24 @@ def main() -> None:
         choices=[s.value for s in ChunkStrategy] + ["all"],
         help="Chunking strategy to ingest (or 'all').",
     )
+    parser.add_argument(
+        "--embedding-model",
+        default=None,
+        help="Embedding model to use (default: settings.embedding_model). "
+        "Pass a local model like BAAI/bge-large-en-v1.5 to use "
+        "sentence-transformers instead of OpenAI.",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
+    model = args.embedding_model or settings.embedding_model
     print("=== DocMind Ingestion ===")
     docs = load_all_documents()
     print(f"Loaded {len(docs)} documents")
 
     client = get_qdrant_client()
     for strategy in resolve_targets(args.strategy):
-        ingest_strategy(strategy, docs, client, settings)
+        ingest_strategy(strategy, docs, client, model)
 
     print("\n=== Ingestion complete ===")
 

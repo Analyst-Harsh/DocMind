@@ -29,13 +29,16 @@ def collection_name_for(strategy: str, embedding_model: str) -> str:
     docmind_chunks_fixed_size_text-embedding-3-small. Trying a new
     embedding model just creates new collections — prior models' data
     is never overwritten.
+
+    Qdrant's REST API takes the collection name as a URL path segment, so
+    "/" (as in HuggingFace model ids like "BAAI/bge-large-en-v1.5") must be
+    sanitized or every request 404s.
     """
-    return f"{settings.qdrant_collection}_{strategy}_{embedding_model}"
+    safe_model = embedding_model.replace("/", "-")
+    return f"{settings.qdrant_collection}_{strategy}_{safe_model}"
 
 
-def ensure_collection(
-    client: QdrantClient, collection_name: str, vector_size: int = 1536
-):
+def ensure_collection(client: QdrantClient, collection_name: str, vector_size: int):
     """
     Create the Qdrant collection if it doesn't exist.
     Safe to call multiple times — won't overwrite existing data.
