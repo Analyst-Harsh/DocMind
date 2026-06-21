@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 from sentence_transformers import CrossEncoder
 
+from app.tracing.spans import traced_span
+
 if TYPE_CHECKING:
     from app.retrieval.searcher import RetrievedChunk
 
@@ -33,13 +35,27 @@ def rerank(
     if not chunks:
         return []
 
-    model = _load_reranker_model()
-    pairs = [(query, chunk.text) for chunk in chunks]
-    scores = model.predict(pairs)
+    with traced_span(
+        "rerank",
+        as_type="retriever",
+        input={"num_candidates": len(chunks), "model": RERANKER_MODEL},
+    ) as span:
+        model = _load_reranker_model()
+        pairs = [(query, chunk.text) for chunk in chunks]
+        scores = model.predict(pairs)
 
-    rescored = [
-        replace(chunk, score=float(score))
-        for chunk, score in zip(chunks, scores, strict=True)
-    ]
-    rescored.sort(key=lambda c: c.score, reverse=True)
-    return rescored[:top_k]
+        rescored = [
+            replace(chunk, score=float(score))
+            for chunk, score in zip(chunks, scores, strict=True)
+        ]
+        rescored.sort(key=lambda c: c.score, reverse=True)
+        result = rescored[:top_k]
+
+        span.update(
+            output={
+                "top_score": result[0].score if result else None,
+                "num_results": len(result),
+            }
+        )
+
+    return result

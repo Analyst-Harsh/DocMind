@@ -1,10 +1,13 @@
 # app/generation/generator.py
+from collections.abc import Iterator
+from dataclasses import dataclass
+
 from openai import OpenAI
+
 from app.config import get_settings
 from app.generation.prompts import build_qa_prompt
 from app.retrieval.searcher import RetrievedChunk
-from dataclasses import dataclass
-from typing import Iterator
+from app.tracing.spans import traced_span
 
 settings = get_settings()
 client = OpenAI()
@@ -30,19 +33,44 @@ def generate_answer(
 ) -> GenerationResult:
     prompt = build_qa_prompt(question, chunks)
 
-    response = client.chat.completions.create(
+    with traced_span(
+        "answer-generation",
+        as_type="generation",
         model=settings.llm_model,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,  # deterministic — crucial for eval reproducibility
-    )
+        input=prompt,
+    ) as span:
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,  # deterministic — crucial for eval reproducibility
+        )
 
-    usage = response.usage
-    cost = (
-        usage.prompt_tokens * COST_PER_INPUT_TOKEN + usage.completion_tokens * COST_PER_OUTPUT_TOKEN
-    )
+        if response.usage is None:
+            raise RuntimeError("OpenAI response missing usage data")
+        usage = response.usage
+
+        answer = response.choices[0].message.content
+        if answer is None:
+            raise RuntimeError("OpenAI response missing answer content")
+
+        cost = (
+            usage.prompt_tokens * COST_PER_INPUT_TOKEN
+            + usage.completion_tokens * COST_PER_OUTPUT_TOKEN
+        )
+
+        span.update(
+            output=answer,
+            usage_details={
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+            },
+            # Langfuse can compute cost itself from its model price table,
+            # or you can pass your own:
+            cost_details={"total": cost},
+        )
 
     return GenerationResult(
-        answer=response.choices[0].message.content,
+        answer=answer,
         sources=chunks,
         prompt_tokens=usage.prompt_tokens,
         completion_tokens=usage.completion_tokens,

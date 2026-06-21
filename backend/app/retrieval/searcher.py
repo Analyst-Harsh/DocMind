@@ -8,6 +8,7 @@ from app.ingestion.embedder import embed_query
 from app.ingestion.indexer import get_qdrant_client
 from app.ingestion.sparse_embedder import embed_query_sparse
 from app.retrieval.reranker import rerank
+from app.tracing.spans import traced_span
 
 log = get_logger(__name__)
 settings = get_settings()
@@ -69,25 +70,41 @@ def retrieve_hybrid(
     if client is None:
         client = get_qdrant_client()
 
-    dense_vector = embed_query(query, model=embedding_model)
-    sparse_vector = embed_query_sparse(query)
+    with traced_span("dense-embedding", as_type="embedding") as span:
+        dense_vector = embed_query(query, model=embedding_model)
+        span.update(output={"dim": len(dense_vector)})
 
-    results = client.query_points(
-        collection_name=collection_name or settings.qdrant_collection,
-        prefetch=[
-            models.Prefetch(
-                query=dense_vector, using="dense", limit=prefetch_limit
-            ),
-            models.Prefetch(
-                query=sparse_vector, using="bm25", limit=prefetch_limit
-            ),
-        ],
-        query=models.FusionQuery(fusion=models.Fusion.RRF),
-        limit=top_k,
-        with_payload=True,
-    )
+    with traced_span("sparse-embedding", as_type="embedding") as span:
+        sparse_vector = embed_query_sparse(query)
+        span.update(output={"num_terms": len(sparse_vector.indices)})
 
-    return _points_to_chunks(results.points)
+    with traced_span(
+        "hybrid-search",
+        as_type="retriever",
+        input={
+            "prefetch_limit": prefetch_limit,
+            "top_k": top_k,
+            "fusion": "RRF",
+        },
+    ) as span:
+        results = client.query_points(
+            collection_name=collection_name or settings.qdrant_collection,
+            prefetch=[
+                models.Prefetch(
+                    query=dense_vector, using="dense", limit=prefetch_limit
+                ),
+                models.Prefetch(
+                    query=sparse_vector, using="bm25", limit=prefetch_limit
+                ),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            limit=top_k,
+            with_payload=True,
+        )
+        chunks = _points_to_chunks(results.points)
+        span.update(output={"num_results": len(chunks), "top_chunks": chunks})
+
+    return chunks
 
 
 def retrieve_reranked(

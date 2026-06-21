@@ -164,3 +164,26 @@ correct chunks rather than recover every relevant span, the MRR gain is the
 more decision-relevant metric here, so reranking is worth keeping as the
 default for the hybrid path despite the small precision/recall cost — but
 it's not the unconditional win the hypothesis predicted on this corpus.
+
+---
+
+## Summary — Experiment 1 → Experiment 4
+
+Each experiment changed exactly one thing and kept the rest of the pipeline
+fixed, so the gain at each step is attributable to that one change:
+
+| Stage                                | Precision@5 | Recall@5  | MRR@5     |
+|---------------------------------------|-------------|-----------|-----------|
+| Exp 1 — fixed-size chunking (baseline)| 0.160       | 0.800     | 0.572     |
+| Exp 1 — recursive chunking            | 0.175       | 0.850     | 0.617     |
+| Exp 3 — + hybrid (dense + BM25/RRF)   | 0.195       | 0.925     | 0.703     |
+| Exp 4 — + cross-encoder reranking     | 0.185       | 0.900     | **0.796** |
+
+**Baseline → final pipeline: Precision +0.025 (+16%), Recall +0.100 (+12.5pp),
+MRR +0.224 (+39%).** Chunking picked the right boundaries (recursive over
+fixed-size), hybrid search added the lexical-match recall dense embeddings
+alone were missing, and reranking is what ultimately moved MRR the most by
+scoring (query, chunk) pairs jointly instead of comparing independent
+vectors. Each layer compounds on a different axis — chunking and hybrid
+mostly grew recall/precision, reranking mostly grew ranking quality (MRR) —
+which is why the full pipeline (recursive + hybrid + rerank) is the current default even though precision/recall *dip* relative to hybrid-only.

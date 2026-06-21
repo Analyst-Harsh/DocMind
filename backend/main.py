@@ -7,10 +7,9 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.generation.generator import generate_answer, stream_answer
-from app.generation.prompts import build_qa_prompt
 from app.ingestion.indexer import collection_name_for
 from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
-from app.tracing.langfuse import get_langfuse
+from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
 
 app = FastAPI(title="DocMind", version="0.1.0")
 settings = get_settings()
@@ -42,20 +41,17 @@ def health():
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
-    langfuse = get_langfuse()
-    trace_id = langfuse.create_trace_id()
+    trace_id = new_trace_id()
 
     start_time = time.time()
 
-    with langfuse.start_as_current_observation(
-        trace_context={"trace_id": trace_id},
-        name="docmind-query",
-        as_type="span",
+    with root_span(
+        "docmind-query",
+        trace_id,
         input={"question": request.question, "top_k": request.top_k},
-    ) as root_span:
-        with root_span.start_as_current_observation(
-            name="retrieval",
-            as_type="span",
+    ) as root:
+        with traced_span(
+            "retrieval",
             input={"query": request.question},
         ) as retrieval_span:
             if request.hybrid:
@@ -82,40 +78,24 @@ def query(request: QueryRequest):
             )
 
         if not chunks:
-            root_span.update(output={"error": "no_chunks_found"})
-            langfuse.flush()
+            root.update(output={"error": "no_chunks_found"})
+            flush_traces()
             raise HTTPException(
                 status_code=404, detail="No relevant documents found"
             )
 
-        # Generation: typed observation with model/usage/cost fields
-        prompt = build_qa_prompt(request.question, chunks)
-        with root_span.start_as_current_observation(
-            name="answer-generation",
-            as_type="generation",
-            model=settings.llm_model,
-            input=prompt,
-        ) as generation:
-            result = generate_answer(question=request.question, chunks=chunks)
-            generation.update(
-                output=result.answer,
-                usage_details={
-                    "prompt_tokens": result.prompt_tokens,
-                    "completion_tokens": result.completion_tokens,
-                },
-                # Langfuse can compute cost itself from its model price table,
-                # or you can pass your own:
-                cost_details={"total": result.cost_usd},
-            )
+        # generate_answer owns its own "answer-generation" span (nests under
+        # this retrieval span's parent automatically via OTEL context).
+        result = generate_answer(question=request.question, chunks=chunks)
 
         latency_ms = int((time.time() - start_time) * 1000)
 
-        root_span.update(
+        root.update(
             output={"answer": result.answer},
             metadata={"cost_usd": result.cost_usd, "latency_ms": latency_ms},
         )
 
-    langfuse.flush()
+    flush_traces()
 
     sources = [
         {
