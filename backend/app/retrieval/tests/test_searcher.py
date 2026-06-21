@@ -89,7 +89,7 @@ def test_retrieve_reranked_composes_hybrid_and_rerank(
 
     mock_retrieve_hybrid.assert_called_once_with(
         "query",
-        top_k=20,
+        top_k=10,
         client=ANY,
         collection_name="coll",
         embedding_model=None,
