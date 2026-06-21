@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.generation.generator import generate_answer, stream_answer
 from app.generation.prompts import build_qa_prompt
 from app.ingestion.indexer import collection_name_for
-from app.retrieval.searcher import retrieve, retrieve_hybrid
+from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
 from app.tracing.langfuse import get_langfuse
 
 app = FastAPI(title="DocMind", version="0.1.0")
@@ -59,7 +59,10 @@ def query(request: QueryRequest):
             input={"query": request.question},
         ) as retrieval_span:
             if request.hybrid:
-                chunks = retrieve_hybrid(
+                retrieve_fn = (
+                    retrieve_reranked if settings.use_reranker else retrieve_hybrid
+                )
+                chunks = retrieve_fn(
                     query=request.question,
                     top_k=request.top_k,
                     collection_name=collection_name_for(
@@ -74,6 +77,7 @@ def query(request: QueryRequest):
                     "num_chunks": len(chunks),
                     "top_score": chunks[0].score if chunks else 0,
                     "chunk_ids": [c.chunk_id for c in chunks],
+                    "reranked": bool(request.hybrid and settings.use_reranker),
                 }
             )
 

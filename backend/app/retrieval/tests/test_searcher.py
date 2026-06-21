@@ -1,8 +1,8 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from qdrant_client import models
 
-from app.retrieval.searcher import retrieve_hybrid
+from app.retrieval.searcher import retrieve_hybrid, retrieve_reranked
 
 
 def make_point(chunk_id="c0", doc_id="doc", text="hello", score=0.9):
@@ -69,3 +69,31 @@ def test_retrieve_hybrid_maps_points_to_retrieved_chunk(
     assert results[0].chunk_id == "c0"
     assert results[0].text == "hello world"
     assert results[0].score == 0.95
+
+
+@patch("app.retrieval.searcher.rerank")
+@patch("app.retrieval.searcher.retrieve_hybrid")
+def test_retrieve_reranked_composes_hybrid_and_rerank(
+    mock_retrieve_hybrid, mock_rerank
+):
+    mock_retrieve_hybrid.return_value = ["candidate-chunks"]
+    mock_rerank.return_value = ["final-chunks"]
+
+    result = retrieve_reranked(
+        "query",
+        top_k=5,
+        client=MagicMock(),
+        collection_name="coll",
+        candidate_pool_size=20,
+    )
+
+    mock_retrieve_hybrid.assert_called_once_with(
+        "query",
+        top_k=20,
+        client=ANY,
+        collection_name="coll",
+        embedding_model=None,
+        prefetch_limit=20,
+    )
+    mock_rerank.assert_called_once_with("query", ["candidate-chunks"], 5)
+    assert result == ["final-chunks"]

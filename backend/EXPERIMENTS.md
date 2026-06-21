@@ -125,6 +125,42 @@ Qdrant, both cheap relative to the recall/MRR gain.
 
 ---
 
-## Experiment 4 — GraphRAG vs flat retrieval
+## Experiment 4 — Cross-encoder reranking
 
-_Week 4_
+**Question:** Does reranking hybrid search's candidate pool with a
+cross-encoder (`BAAI/bge-reranker-base`) improve precision@5 and MRR over
+hybrid search alone?
+
+**Hypothesis:** Scoring (query, chunk) pairs jointly should outperform
+hybrid's RRF-fused ranking, which only ever compares independently-computed
+scores — production RAG postmortems often call this the single largest
+quality jump in the pipeline.
+
+Run against the same golden set, recursive chunking + text-embedding-3-small,
+k=5. Reranker re-scores a candidate_pool_size=20 hybrid pool, then truncates
+to top 5. `recursive (hybrid)` numbers are from Experiment 3.
+
+| Strategy                  | Precision@5 | Recall@5 | MRR@5 | Chunks | Avg tokens |
+|----------------------------|-------------|----------|-------|--------|------------|
+| recursive (hybrid)         | 0.195       | 0.925    | 0.703 | 137    | 478        |
+| recursive (hybrid+rerank)  | 0.185       | 0.900    | 0.796 | 137    | 478        |
+
+**Finding:** Reranking gives the largest MRR gain of any experiment so far
+(0.703 → 0.796, +0.093/+13%) but slightly *hurts* precision@5 (-0.010, -5%)
+and recall@5 (-0.025, -2.7pp) relative to hybrid alone. The MRR jump matches
+the hypothesis directly — the cross-encoder is much better at picking the
+single most relevant chunk and pushing it to rank 1, since it scores the
+query and that chunk jointly instead of comparing two independently-computed
+vectors/term-stats. But on this golden set several queries have more than
+one valid (doc_id, snippet) match, and promoting the cross-encoder's single
+best pick to the top can bump a second, still-relevant chunk out of the
+top-5 window, which is what shows up as the small precision/recall dip.
+
+This is a ranking-quality vs. coverage tradeoff, not reranking failing
+outright: MRR (how fast you find *a* relevant chunk) improves a lot, while
+precision/recall (how many of the *k* slots are relevant) dips slightly. For
+a QA pipeline that only needs the LLM to ground its answer in a handful of
+correct chunks rather than recover every relevant span, the MRR gain is the
+more decision-relevant metric here, so reranking is worth keeping as the
+default for the hybrid path despite the small precision/recall cost — but
+it's not the unconditional win the hypothesis predicted on this corpus.

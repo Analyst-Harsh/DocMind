@@ -1,5 +1,6 @@
 # create env config file
 from functools import lru_cache
+
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,7 @@ class Settings(BaseSettings):
     # OpenAI settings
     openai_api_key: str
     embedding_model: str = "text-embedding-3-small"
+    use_reranker: bool = True
     llm_model: str = "gpt-4o-mini"
     draft_generate_llm_model: str = "gpt-4o"
 
@@ -28,6 +30,6 @@ class Settings(BaseSettings):
     )
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()

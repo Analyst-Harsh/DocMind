@@ -1,12 +1,15 @@
 from dataclasses import dataclass
 
 from qdrant_client import QdrantClient, models
+from structlog import get_logger
 
 from app.config import get_settings
 from app.ingestion.embedder import embed_query
 from app.ingestion.indexer import get_qdrant_client
 from app.ingestion.sparse_embedder import embed_query_sparse
+from app.retrieval.reranker import rerank
 
+log = get_logger(__name__)
 settings = get_settings()
 
 
@@ -56,7 +59,7 @@ def retrieve_hybrid(
     client: QdrantClient | None = None,
     collection_name: str | None = None,
     embedding_model: str | None = None,
-    prefetch_limit: int = 5,
+    prefetch_limit: int = 20,
 ) -> list[RetrievedChunk]:
     """
     Hybrid dense + BM25 sparse retrieval against a collection built with
@@ -85,6 +88,33 @@ def retrieve_hybrid(
     )
 
     return _points_to_chunks(results.points)
+
+
+def retrieve_reranked(
+    query: str,
+    top_k: int = 5,
+    client: QdrantClient | None = None,
+    collection_name: str | None = None,
+    embedding_model: str | None = None,
+    candidate_pool_size: int = 20,
+) -> list[RetrievedChunk]:
+    """
+    Hybrid retrieval over a wide candidate pool, re-scored by a
+    cross-encoder reranker and truncated to top_k. The candidate pool's
+    RRF score/order is discarded -- the reranker fully re-scores and
+    re-sorts, so only candidate-set membership from retrieve_hybrid
+    matters here.
+    """
+    candidates = retrieve_hybrid(
+        query,
+        top_k=int(candidate_pool_size / 2),
+        client=client,
+        collection_name=collection_name,
+        embedding_model=embedding_model,
+        prefetch_limit=candidate_pool_size,
+    )
+    log.info(f"retrieved {len(candidates)} candidates for query '{query}'")
+    return rerank(query, candidates, top_k)
 
 
 def _points_to_chunks(points) -> list[RetrievedChunk]:
