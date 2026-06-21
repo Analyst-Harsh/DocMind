@@ -81,9 +81,47 @@ currently justify their cost on this corpus.
 
 ---
 
-## Experiment 3 — RAG vs long-context
+## Experiment 3 — Hybrid search
 
-_Week 4_
+**Question:** Does adding BM25 (sparse, lexical) retrieval on top of dense
+embeddings improve retrieval quality over dense-only search?
+
+**Hypothesis:** Hybrid (dense + BM25, fused via Qdrant's native RRF) should
+improve recall in particular, by catching exact keyword/entity matches that
+dense embeddings alone miss.
+
+Run against the same golden set, recursive chunking + text-embedding-3-small,
+k=5. Dense-only numbers are recursive from Experiment 1.
+
+| Strategy            | Precision@5 | Recall@5 | MRR@5 | Chunks | Avg tokens |
+|----------------------|-------------|----------|-------|--------|------------|
+| recursive (dense)    | 0.175       | 0.850    | 0.617 | 137    | 478        |
+| recursive (hybrid)   | 0.195       | 0.925    | 0.703 | 137    | 478        |
+
+**Finding:** Hybrid search beats dense-only retrieval on every metric for
+the same chunk set — precision +0.020 (+11%), recall +0.075 (+9pp, from
+0.850 to 0.925), and MRR +0.086 (+14%), the largest relative gain of the
+three. Chunk count and average tokens are identical between the two rows
+(same recursive chunker output indexed twice — once with only a dense
+vector, once with both dense and BM25 sparse vectors), so the entire
+improvement is attributable to fusing in lexical matching, not to any
+difference in chunking.
+
+The recall jump is the most notable result and matches the hypothesis:
+BM25 picks up exact-term matches (named entities, technical terms, acronyms)
+that cosine similarity over dense embeddings can miss when a query shares
+vocabulary with a chunk but the embedding doesn't place them close enough
+in vector space. The MRR gain (0.617 → 0.703) shows RRF fusion isn't just
+surfacing additional relevant chunks lower in the list — it's also ranking
+the correct chunk higher on average when both signals agree, consistent
+with how RRF rewards chunks that appear in both the dense and sparse
+candidate lists rather than just appearing in one.
+
+Given this clear improvement with no extra chunking cost (same chunks,
+same chunk count), hybrid retrieval is the better default over dense-only
+for this corpus — the added cost is one extra local BM25 encode per query
+(no API call, fastembed runs on CPU) plus a second named-vector index in
+Qdrant, both cheap relative to the recall/MRR gain.
 
 ---
 

@@ -17,10 +17,13 @@ from app.ingestion.embedder import embed_chunks, get_embedding_dim
 from app.ingestion.indexer import (
     collection_name_for,
     ensure_collection,
+    ensure_hybrid_collection,
     get_qdrant_client,
     upsert_chunks,
+    upsert_chunks_hybrid,
 )
 from app.ingestion.loader import load_all_documents
+from app.ingestion.sparse_embedder import embed_chunks_sparse
 
 
 def resolve_targets(strategy: str) -> list[str]:
@@ -33,7 +36,7 @@ def resolve_targets(strategy: str) -> list[str]:
 
 
 def ingest_strategy(
-    strategy: str, docs, client: QdrantClient, model: str
+    strategy: str, docs, client: QdrantClient, model: str, hybrid: bool = False
 ) -> None:
     print(f"\n=== Ingesting strategy: {strategy} (model: {model}) ===")
     chunker = get_chunker(
@@ -48,12 +51,26 @@ def ingest_strategy(
         f"(~${(total_tokens / 1_000_000) * 0.02:.4f})"
     )
     chunk_embeddings = embed_chunks(chunks, model=model)
-
-    collection = collection_name_for(strategy, model)
-    ensure_collection(client, collection, vector_size=get_embedding_dim(model))
-    upsert_chunks(client, collection, chunk_embeddings)
-    info = client.get_collection(collection)
-    print(f"  {collection}: {info.points_count} points")
+    if hybrid:
+        print(f"  Building hybrid (dense+BM25) variant for {strategy}...")
+        sparse_embeddings = embed_chunks_sparse(chunks)
+        hybrid_collection = collection_name_for(strategy, model, hybrid=True)
+        ensure_hybrid_collection(
+            client, hybrid_collection, vector_size=get_embedding_dim(model)
+        )
+        upsert_chunks_hybrid(
+            client, hybrid_collection, chunk_embeddings, sparse_embeddings
+        )
+        hybrid_info = client.get_collection(hybrid_collection)
+        print(f"  {hybrid_collection}: {hybrid_info.points_count} points")
+    else:
+        collection = collection_name_for(strategy, model)
+        ensure_collection(
+            client, collection, vector_size=get_embedding_dim(model)
+        )
+        upsert_chunks(client, collection, chunk_embeddings)
+        info = client.get_collection(collection)
+        print(f"  {collection}: {info.points_count} points")
 
 
 def main() -> None:
@@ -71,6 +88,13 @@ def main() -> None:
         "Pass a local model like BAAI/bge-large-en-v1.5 to use "
         "sentence-transformers instead of OpenAI.",
     )
+    parser.add_argument(
+        "--hybrid",
+        action="store_true",
+        help="Build a hybrid (dense+BM25 sparse) collection instead of the "
+        "normal dense-only collection, for the given --strategy/"
+        "--embedding-model.",
+    )
     args = parser.parse_args()
 
     settings = get_settings()
@@ -81,7 +105,7 @@ def main() -> None:
 
     client = get_qdrant_client()
     for strategy in resolve_targets(args.strategy):
-        ingest_strategy(strategy, docs, client, model)
+        ingest_strategy(strategy, docs, client, model, hybrid=args.hybrid)
 
     print("\n=== Ingestion complete ===")
 

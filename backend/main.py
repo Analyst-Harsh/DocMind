@@ -1,22 +1,30 @@
 # app/main.py
+import time
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.retrieval.searcher import retrieve
+
+from app.config import get_settings
 from app.generation.generator import generate_answer, stream_answer
 from app.generation.prompts import build_qa_prompt
+from app.ingestion.indexer import collection_name_for
+from app.retrieval.searcher import retrieve, retrieve_hybrid
 from app.tracing.langfuse import get_langfuse
-from app.config import get_settings
-import time
-
 
 app = FastAPI(title="DocMind", version="0.1.0")
 settings = get_settings()
+
+# Hybrid (dense+BM25) retrieval is currently only ingested for this
+# strategy/model combo (see scripts/ingest.py --hybrid).
+HYBRID_STRATEGY = "recursive"
+HYBRID_MODEL = "text-embedding-3-small"
 
 
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
+    hybrid: bool = False
 
 
 class QueryResponse(BaseModel):
@@ -50,7 +58,17 @@ def query(request: QueryRequest):
             as_type="span",
             input={"query": request.question},
         ) as retrieval_span:
-            chunks = retrieve(query=request.question, top_k=request.top_k)
+            if request.hybrid:
+                chunks = retrieve_hybrid(
+                    query=request.question,
+                    top_k=request.top_k,
+                    collection_name=collection_name_for(
+                        HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
+                    ),
+                    embedding_model=HYBRID_MODEL,
+                )
+            else:
+                chunks = retrieve(query=request.question, top_k=request.top_k)
             retrieval_span.update(
                 output={
                     "num_chunks": len(chunks),
@@ -62,7 +80,9 @@ def query(request: QueryRequest):
         if not chunks:
             root_span.update(output={"error": "no_chunks_found"})
             langfuse.flush()
-            raise HTTPException(status_code=404, detail="No relevant documents found")
+            raise HTTPException(
+                status_code=404, detail="No relevant documents found"
+            )
 
         # Generation: typed observation with model/usage/cost fields
         prompt = build_qa_prompt(request.question, chunks)
@@ -117,7 +137,9 @@ def query_stream(request: QueryRequest):
     """Streaming endpoint for the frontend (Week 3)."""
     chunks = retrieve(query=request.question, top_k=request.top_k)
     if not chunks:
-        raise HTTPException(status_code=404, detail="No relevant documents found")
+        raise HTTPException(
+            status_code=404, detail="No relevant documents found"
+        )
 
     return StreamingResponse(
         stream_answer(question=request.question, chunks=chunks),
