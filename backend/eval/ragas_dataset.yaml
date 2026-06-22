@@ -1,0 +1,247 @@
+items:
+- question: What two components are combined to make up a RAG model?
+  reference_answer: >-
+    A RAG model combines a pre-trained seq2seq model that acts as parametric
+    memory with a dense vector index of documents that acts as non-parametric
+    memory, letting the model retrieve and condition on relevant passages
+    when generating its output.
+  source_docs: [rag-paper]
+  category: factual_single_doc
+- question: How does the RAG-Sequence model differ from RAG-Token when generating an output sequence?
+  reference_answer: >-
+    RAG-Sequence retrieves a single set of documents and uses the same
+    retrieved document to generate every token of the output, whereas
+    RAG-Token can draw on a different retrieved document for each token it
+    generates, letting it blend content from multiple documents in one
+    answer.
+  source_docs: [rag-paper]
+  category: factual_single_doc
+- question: Which pre-trained models does RAG use for its retriever and its generator?
+  reference_answer: >-
+    RAG's retriever is based on Dense Passage Retrieval (DPR), a bi-encoder
+    that scores documents against a query, and its generator is BART-large,
+    a 400M-parameter pre-trained seq2seq transformer.
+  source_docs: [rag-paper]
+  category: factual_single_doc
+- question: What does each layer of the Transformer's encoder consist of?
+  reference_answer: >-
+    Each of the encoder's six identical layers has a multi-head self-attention
+    sub-layer followed by a position-wise feed-forward sub-layer, with a
+    residual connection and layer normalization wrapped around each sub-layer.
+  source_docs: [attention-paper]
+  category: factual_single_doc
+- question: How does multi-head attention differ from using a single attention function?
+  reference_answer: >-
+    Instead of running one attention function over full-dimensional keys,
+    values and queries, multi-head attention linearly projects them into
+    several lower-dimensional subspaces and runs attention in parallel across
+    each one; the paper uses eight heads with 64-dimensional keys and values,
+    keeping the total computation comparable to single-head attention.
+  source_docs: [attention-paper]
+  category: factual_single_doc
+- question: What problem is the Ragas framework designed to solve when evaluating RAG pipelines?
+  reference_answer: >-
+    Ragas provides a way to evaluate retrieval-augmented generation systems
+    without relying on ground-truth human-annotated reference answers, using
+    an LLM to judge dimensions like faithfulness and relevance directly from
+    the question, retrieved context, and generated answer.
+  source_docs: [ragas-paper]
+  category: factual_single_doc
+- question: How does Ragas estimate the faithfulness of a generated answer?
+  reference_answer: >-
+    Ragas first prompts an LLM to break the answer down into individual
+    statements, then asks the LLM whether each statement is supported by the
+    retrieved context; the faithfulness score is the fraction of statements
+    judged to be supported.
+  source_docs: [ragas-paper]
+  category: factual_single_doc
+- question: Why did the Ragas authors create the WikiEval dataset?
+  reference_answer: >-
+    No public dataset of question-context-answer triples annotated with human
+    judgments of faithfulness, answer relevance, and context relevance
+    existed, so the authors built WikiEval from recent Wikipedia pages to
+    validate their metrics against human preferences.
+  source_docs: [ragas-paper]
+  category: factual_single_doc
+- question: What design choice makes Qdrant well suited to high-load production workloads?
+  reference_answer: >-
+    Qdrant is implemented in Rust, which the project credits for making it
+    fast and reliable even under heavy load, backed by published benchmarks.
+  source_docs: [qdrant-readme]
+  category: factual_single_doc
+- question: What vector search capabilities does Qdrant support beyond plain dense similarity search?
+  reference_answer: >-
+    Besides dense vectors for semantic similarity, Qdrant supports sparse
+    vectors for full-text-style search and multivector search for objects
+    with multiple embeddings or late-interaction models such as ColBERT.
+  source_docs: [qdrant-readme]
+  category: factual_single_doc
+- question: What core workflow stages does Langfuse help teams with?
+  reference_answer: >-
+    Langfuse is an open-source LLM engineering platform that helps teams
+    collaboratively develop, monitor, evaluate, and debug AI applications,
+    built on top of the ClickHouse database.
+  source_docs: [langfuse-readme]
+  category: factual_single_doc
+- question: What is the recommended way to run Langfuse in a production environment?
+  reference_answer: >-
+    For production, Langfuse recommends self-hosting on a Kubernetes cluster
+    via its Helm chart, calling this the preferred production deployment,
+    alongside other options like a single VM or managed Langfuse Cloud.
+  source_docs: [langfuse-readme]
+  category: factual_single_doc
+- question: What kinds of evaluation does Langfuse support for LLM applications?
+  reference_answer: >-
+    Langfuse supports LLM-as-a-judge scoring, custom code evaluators, manual
+    labeling, and user feedback collection, and lets teams build dataset-based
+    test runs through its API and SDKs.
+  source_docs: [langfuse-readme]
+  category: factual_single_doc
+- question: What two libraries does FastAPI build on, and what does each provide?
+  reference_answer: >-
+    FastAPI is built on Starlette, which provides the web-serving parts, and
+    Pydantic, which provides the data validation and parsing parts based on
+    Python type hints.
+  source_docs: [fastapi-readme]
+  category: factual_single_doc
+- question: What development-speed benefits does FastAPI claim over other frameworks?
+  reference_answer: >-
+    FastAPI's README estimates that it increases feature development speed
+    by roughly 200-300% and reduces human-induced bugs by about 40%, based on
+    internal team testing.
+  source_docs: [fastapi-readme]
+  category: factual_single_doc
+- question: What capabilities does the Ragas library offer beyond computing evaluation scores?
+  reference_answer: >-
+    Beyond objective metrics, the Ragas library automatically generates test
+    datasets covering a range of scenarios, integrates with frameworks like
+    LangChain, and supports building feedback loops from production data.
+  source_docs: [ragas-readme]
+  category: factual_single_doc
+- question: How can a user opt out of Ragas' usage data collection?
+  reference_answer: >-
+    Ragas collects minimal anonymized usage analytics by default, but a user
+    can disable this by setting the RAGAS_DO_NOT_TRACK environment variable
+    to true.
+  source_docs: [ragas-readme]
+  category: factual_single_doc
+- question: What is tiktoken and what tokenization technique does it use?
+  reference_answer: >-
+    tiktoken is a fast byte pair encoding (BPE) tokenizer built for use with
+    OpenAI's models, mapping text to and from sequences of integer tokens.
+  source_docs: [tiktoken-readme]
+  category: factual_single_doc
+- question: What desirable properties does Byte Pair Encoding have, according to tiktoken's documentation?
+  reference_answer: >-
+    BPE is reversible and lossless so tokens can be converted back into the
+    exact original text, it works on arbitrary text outside its training
+    data, it compresses text into fewer tokens than raw bytes, and it tends
+    to expose common subwords so models can generalize across contexts.
+  source_docs: [tiktoken-readme]
+  category: factual_single_doc
+- question: How much faster is tiktoken than a comparable open-source tokenizer?
+  reference_answer: >-
+    According to its README, tiktoken is between 3 and 6 times faster than a
+    comparable open-source tokenizer, as measured on 1GB of text with the
+    GPT-2 tokenizer.
+  source_docs: [tiktoken-readme]
+  category: factual_single_doc
+- question: What is the relationship between the dense retrieval described in the RAG paper and the search capability Qdrant provides?
+  reference_answer: >-
+    RAG's retriever performs dense-vector Maximum Inner Product Search over a
+    DPR-encoded document index, purely on embeddings; Qdrant implements that
+    same kind of dense-vector similarity search as a production service, but
+    additionally fuses it with sparse keyword vectors through hybrid search,
+    a retrieval signal the original RAG architecture's dense-only retriever
+    did not use.
+  source_docs: [rag-paper, qdrant-readme]
+  category: multi_doc_synthesis
+- question: How do Ragas' evaluation metrics and Langfuse's platform features complement each other in an LLM application workflow?
+  reference_answer: >-
+    The Ragas paper defines algorithmic, reference-free metrics like
+    faithfulness and answer relevance that are computed by prompting an LLM
+    to judge a response against its retrieved context; Langfuse operationalizes
+    this kind of scoring in production by supporting LLM-as-judge and code
+    evaluators on top of the traces it captures, plus dataset-based test runs.
+  source_docs: [ragas-paper, langfuse-readme]
+  category: multi_doc_synthesis
+- question: Why is the reference-free evaluation approach from the Ragas paper particularly well suited to how Langfuse evaluates production traces?
+  reference_answer: >-
+    The Ragas paper's core motivation is that reference answers are usually
+    unavailable once a RAG system is in production, so it scores quality via
+    LLM judgment over the retrieved context alone; Langfuse's evaluation
+    features score live traces the same way, via LLM-as-judge or code
+    evaluators, rather than requiring a pre-labeled test set.
+  source_docs: [ragas-paper, langfuse-readme]
+  category: multi_doc_synthesis
+- question: How does the Ragas paper's definition of faithfulness relate to what the Ragas library actually provides?
+  reference_answer: >-
+    The paper defines faithfulness as the fraction of an answer's
+    LLM-extracted statements that are judged to be supported by the retrieved
+    context; the open-source Ragas library packages this kind of objective,
+    LLM-based metric as a ready-to-use evaluator installable via pip, so
+    developers don't have to reimplement the statement-extraction and
+    verification prompts themselves.
+  source_docs: [ragas-paper, ragas-readme]
+  category: multi_doc_synthesis
+- question: Is the reference-free evaluation philosophy from the Ragas paper still central to the Ragas library today?
+  reference_answer: >-
+    Yes — the paper's central contribution is evaluating RAG systems without
+    ground-truth human annotations by using LLM judgments over retrieved
+    context, and the library's README quickstart still centers on
+    metric-driven evaluation computed from an application's own outputs,
+    such as its DiscreteMetric-based aspect critique, rather than requiring a
+    labeled reference dataset.
+  source_docs: [ragas-paper, ragas-readme]
+  category: multi_doc_synthesis
+- question: What role does the Transformer architecture from "Attention Is All You Need" play inside a RAG model?
+  reference_answer: >-
+    RAG's generator component is BART-large, described as a pre-trained
+    seq2seq transformer — the same encoder-decoder, attention-based
+    architecture introduced in "Attention Is All You Need" — so RAG relies on
+    the Transformer to turn the input together with retrieved passages into
+    the final generated answer.
+  source_docs: [attention-paper, rag-paper]
+  category: multi_doc_synthesis
+- question: Why was a Transformer-based generator a natural fit for the RAG paper's architecture rather than a recurrent model?
+  reference_answer: >-
+    The Transformer paper shows that dispensing with recurrence in favor of
+    self-attention allows much more parallelizable and faster training while
+    still reaching state-of-the-art results; RAG needs a generator that can
+    jointly condition on the input and a retrieved passage at each generation
+    step, which a pre-trained Transformer seq2seq model like BART-large
+    already supports without RAG's authors needing a new architecture.
+  source_docs: [attention-paper, rag-paper]
+  category: multi_doc_synthesis
+- question: What is the training dataset used for BGE-large-en-v1.5?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What is Qdrant's maximum supported vector dimension?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: How does Ragas handle evaluation of multilingual question-answer pairs?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What pricing does Langfuse Cloud charge once usage exceeds its free tier?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What is the minimum Python version required to run FastAPI?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What text corpus was tiktoken's cl100k_base encoding trained on?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What is the maximum input context window size supported by the Transformer architecture described in "Attention Is All You Need"?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus
+- question: What latency overhead does Qdrant's vector quantization typically add to a single query?
+  reference_answer: "I don't have enough information in the provided documents to answer this."
+  source_docs: []
+  category: not_in_corpus

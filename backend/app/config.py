@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     use_reranker: bool = True
 
     # Langfuse settings
-    enable_tracing: bool = True
+    enable_tracing: bool = False
     langfuse_secret_key: str
     langfuse_public_key: str
     langfuse_base_url: str

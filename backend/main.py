@@ -100,6 +100,7 @@ def query(request: QueryRequest):
     sources = [
         {
             "chunk_id": c.chunk_id,
+            "doc_id": c.doc_id,
             "doc_title": c.doc_title,
             "score": c.score,
             "source_path": c.source_path,
