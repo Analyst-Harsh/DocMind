@@ -187,3 +187,84 @@ scoring (query, chunk) pairs jointly instead of comparing independent
 vectors. Each layer compounds on a different axis — chunking and hybrid
 mostly grew recall/precision, reranking mostly grew ranking quality (MRR) —
 which is why the full pipeline (recursive + hybrid + rerank) is the current default even though precision/recall *dip* relative to hybrid-only.
+
+---
+## Experiment 5 — End-to-end RAGAS evaluation (full pipeline)
+
+**Question:** Now that retrieval is hybrid+reranked (Experiments 3-4), how
+does the *full* pipeline — retrieve -> rerank -> generate — score on
+RAGAS's LLM-judged metrics (faithfulness, answer relevancy, context
+precision, context recall), and does answer quality hold up when a question
+needs information combined from more than one document?
+
+Run via `scripts/run_ragas_eval.py` against `eval/ragas_dataset.yaml` (35
+questions, GPT-4o-mini judge): 20 `factual_single_doc`, 7
+`multi_doc_synthesis`, 8 `not_in_corpus` (deliberately unanswerable from the
+corpus). Same recursive+hybrid+rerank pipeline as Experiment 4's default.
+Raw results: `eval/results/ragas_baseline.json`.
+
+| category            | faithfulness | answer_relevancy | context_precision | context_recall | n  |
+|----------------------|--------------|-------------------|--------------------|-----------------|----|
+| factual_single_doc  | 0.96         | 0.90              | 0.81               | 0.93            | 20 |
+| multi_doc_synthesis | 0.82         | 0.50              | 0.93               | 0.86            | 7  |
+| not_in_corpus       | 0.71         | 0.00              | 0.07               | 0.00            | 8  |
+| **overall**         | **0.88**     | **0.62**          | **0.67**           | **0.70**        | 35 |
+
+`multi_doc_synthesis` is the second data point on this category, not the
+first — an earlier prompt revision (before the `GROUNDED_QA_TEMPLATE`
+wording this run was scored against) measured substantially worse on the
+same 7 questions:
+
+| multi_doc_synthesis (n=7) | faithfulness | answer_relevancy | context_precision | context_recall |
+|----------------------------|--------------|-------------------|--------------------|-----------------|
+| earlier prompt revision    | 0.38         | 0.27              | 0.96               | 0.80            |
+| this run (table above)     | 0.82         | 0.50              | 0.93               | 0.86            |
+
+**Finding:** The weak overall answer_relevancy (0.62) hides two unrelated
+failure modes:
+
+- **`not_in_corpus` (8 questions):** near-zero context_precision/recall here
+  is *correct* — by construction nothing relevant exists in the corpus, so a
+  low score means the retriever isn't pulling in noise to compensate. All 8
+  got the fixed refusal string. The low faithfulness (0.71) and
+  answer_relevancy (0.00) on these rows are a metric artifact, not a
+  pipeline defect: a refusal sentence has no question-specific claims for
+  faithfulness to check and no question-specific content for
+  answer_relevancy's reverse-question-generation to compare against, so both
+  metrics structurally floor near 0 on a *correct* refusal. One outlier
+  ("maximum input context window size of the Transformer") got a hedged
+  partial answer instead of a clean refusal (faithfulness 0.67) — a real
+  one-off generation bug, but it's a single question, not the category.
+
+- **`multi_doc_synthesis` (7 questions) — the real signal:** the earlier
+  prompt revision already lifted this category a lot (faithfulness
+  0.38→0.82, answer_relevancy 0.27→0.50, context_recall 0.80→0.86) at a
+  small context_precision cost (0.96→0.93) — so that fix worked, it just
+  didn't go far enough. context_precision (0.93) and context_recall (0.86)
+  in this run are the *best* of any category, so hybrid+rerank is reliably
+  handing the generator chunks from the right multiple documents. But
+  answer_relevancy (0.50) and faithfulness (0.82) still trail
+  `factual_single_doc` (0.90 / 0.96) by a wide margin: 3 of 7 questions
+  (e.g. "relationship between RAG's dense retrieval and Qdrant's search,"
+  "Transformer's role inside a RAG model") got the flat refusal string even
+  though relevant multi-document context was sitting right there in the
+  prompt. The generator was still treating "no single chunk contains the
+  whole answer" the same as "not in context" and refusing instead of
+  combining facts stated across chunks — `GROUNDED_QA_TEMPLATE`
+  (`app/generation/prompts.py`) said "answer ONLY from context" and "do not
+  infer beyond what is stated," illustrated with only a single-chunk
+  citation example, which reads as license to refuse whenever an answer
+  spans more than one chunk.
+
+**Action taken:** Rewrote `GROUNDED_QA_TEMPLATE` again to explicitly
+instruct reading all chunks before answering, synthesizing facts stated
+across multiple chunks into one answer, citing every chunk a claim relies
+on, and drawing a clear line between *combining stated facts* (allowed) and
+*inferring unstated ones* (still forbidden) — plus a new rule to surface
+contradictions across chunks instead of silently picking one. This targets
+the same `multi_doc_synthesis` refusal-on-multi-hop failure the earlier
+revision only partly fixed; retrieval was already good for this category
+(context_precision/recall above), so the fix is generation-side only and
+shouldn't move retrieval metrics.
+
+---

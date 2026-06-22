@@ -1,7 +1,9 @@
 # app/tracing/langfuse_client.py
-from langfuse import Langfuse
-from app.config import get_settings
 from functools import lru_cache
+
+from langfuse import Langfuse
+
+from app.config import get_settings
 
 settings = get_settings()
 
