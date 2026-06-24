@@ -1,0 +1,39 @@
+paraphrase_pairs:
+  - original: What two components are combined to make up a RAG model?
+    paraphrase: Which two parts get combined together to build a RAG model?
+  - original: How does the RAG-Sequence model differ from RAG-Token when generating an output sequence?
+    paraphrase: What's the difference between RAG-Sequence and RAG-Token in how they generate output?
+  - original: Which pre-trained models does RAG use for its retriever and its generator?
+    paraphrase: What pre-trained models power RAG's retriever and generator components?
+  - original: What does each layer of the Transformer's encoder consist of?
+    paraphrase: What sub-components make up a single Transformer encoder layer?
+  - original: How does multi-head attention differ from using a single attention function?
+    paraphrase: Why use multi-head attention instead of one single attention function?
+  - original: What problem is the Ragas framework designed to solve when evaluating RAG pipelines?
+    paraphrase: What gap in RAG pipeline evaluation does the Ragas framework address?
+  - original: How does Ragas estimate the faithfulness of a generated answer?
+    paraphrase: What method does Ragas use to measure how faithful a generated answer is?
+  - original: What design choice makes Qdrant well suited to high-load production workloads?
+    paraphrase: Why is Qdrant a good fit for production workloads under heavy load?
+  - original: What vector search capabilities does Qdrant support beyond plain dense similarity search?
+    paraphrase: Besides dense similarity search, what other vector search features does Qdrant offer?
+  - original: What core workflow stages does Langfuse help teams with?
+    paraphrase: Which stages of the LLM workflow does Langfuse support teams on?
+
+non_paraphrase_pairs:
+  - a: How does BM25 work?
+    b: How does Qdrant filter payloads?
+  - a: What does each layer of the Transformer's encoder consist of?
+    b: How does multi-head attention differ from using a single attention function?
+  - a: How does Ragas estimate the faithfulness of a generated answer?
+    b: Why did the Ragas authors create the WikiEval dataset?
+  - a: What design choice makes Qdrant well suited to high-load production workloads?
+    b: What core workflow stages does Langfuse help teams with?
+  - a: Which pre-trained models does RAG use for its retriever and its generator?
+    b: How does the RAG-Sequence model differ from RAG-Token when generating an output sequence?
+  - a: What vector search capabilities does Qdrant support beyond plain dense similarity search?
+    b: What problem is the Ragas framework designed to solve when evaluating RAG pipelines?
+  - a: What two components are combined to make up a RAG model?
+    b: What does each layer of the Transformer's encoder consist of?
+  - a: How does Ragas estimate the faithfulness of a generated answer?
+    b: What core workflow stages does Langfuse help teams with?

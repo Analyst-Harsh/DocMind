@@ -31,18 +31,21 @@ def retrieve(
     client: QdrantClient | None = None,
     collection_name: str | None = None,
     embedding_model: str | None = None,
+    query_vector: list[float] | None = None,
 ) -> list[RetrievedChunk]:
     """
     Embed the query and find the top_k most similar chunks in Qdrant.
     Returns chunks sorted by relevance score descending.
     collection_name defaults to settings.qdrant_collection; embedding_model
     defaults to the configured model (must match the model the collection
-    was ingested with).
+    was ingested with). Pass a precomputed query_vector to skip the
+    embedding call (the caller already has one, e.g. from a cache check).
     """
     if client is None:
         client = get_qdrant_client()
 
-    query_vector = embed_query(query, model=embedding_model)
+    if query_vector is None:
+        query_vector = embed_query(query, model=embedding_model)
 
     results = client.query_points(
         collection_name=collection_name or settings.qdrant_collection,
@@ -61,18 +64,21 @@ def retrieve_hybrid(
     collection_name: str | None = None,
     embedding_model: str | None = None,
     prefetch_limit: int = 20,
+    query_vector: list[float] | None = None,
 ) -> list[RetrievedChunk]:
     """
     Hybrid dense + BM25 sparse retrieval against a collection built with
     named "dense"/"bm25" vectors (see indexer.ensure_hybrid_collection).
     Fuses both result sets server-side via Reciprocal Rank Fusion (RRF).
+    Pass a precomputed query_vector to skip the dense embedding call.
     """
     if client is None:
         client = get_qdrant_client()
 
-    with traced_span("dense-embedding", as_type="embedding") as span:
-        dense_vector = embed_query(query, model=embedding_model)
-        span.update(output={"dim": len(dense_vector)})
+    if query_vector is None:
+        with traced_span("dense-embedding", as_type="embedding") as span:
+            query_vector = embed_query(query, model=embedding_model)
+            span.update(output={"dim": len(query_vector)})
 
     with traced_span("sparse-embedding", as_type="embedding") as span:
         sparse_vector = embed_query_sparse(query)
@@ -91,7 +97,7 @@ def retrieve_hybrid(
             collection_name=collection_name or settings.qdrant_collection,
             prefetch=[
                 models.Prefetch(
-                    query=dense_vector, using="dense", limit=prefetch_limit
+                    query=query_vector, using="dense", limit=prefetch_limit
                 ),
                 models.Prefetch(
                     query=sparse_vector, using="bm25", limit=prefetch_limit
@@ -114,6 +120,7 @@ def retrieve_reranked(
     collection_name: str | None = None,
     embedding_model: str | None = None,
     candidate_pool_size: int = 20,
+    query_vector: list[float] | None = None,
 ) -> list[RetrievedChunk]:
     """
     Hybrid retrieval over a wide candidate pool, re-scored by a
@@ -129,6 +136,7 @@ def retrieve_reranked(
         collection_name=collection_name,
         embedding_model=embedding_model,
         prefetch_limit=candidate_pool_size,
+        query_vector=query_vector,
     )
     log.info(f"retrieved {len(candidates)} candidates for query '{query}'")
     return rerank(query, candidates, top_k)

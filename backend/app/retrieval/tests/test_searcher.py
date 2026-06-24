@@ -2,7 +2,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 from qdrant_client import models
 
-from app.retrieval.searcher import retrieve_hybrid, retrieve_reranked
+from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
 
 
 def make_point(chunk_id="c0", doc_id="doc", text="hello", score=0.9):
@@ -71,6 +71,39 @@ def test_retrieve_hybrid_maps_points_to_retrieved_chunk(
     assert results[0].score == 0.95
 
 
+@patch("app.retrieval.searcher.embed_query")
+def test_retrieve_skips_embed_query_when_query_vector_given(mock_embed_query):
+    client = MagicMock()
+    client.query_points.return_value.points = []
+
+    retrieve("query", client=client, collection_name="coll", query_vector=[0.1, 0.2])
+
+    mock_embed_query.assert_not_called()
+    _, kwargs = client.query_points.call_args
+    assert kwargs["query"] == [0.1, 0.2]
+
+
+@patch("app.retrieval.searcher.embed_query_sparse")
+@patch("app.retrieval.searcher.embed_query")
+def test_retrieve_hybrid_skips_embed_query_when_query_vector_given(
+    mock_embed_query, mock_embed_query_sparse
+):
+    mock_embed_query_sparse.return_value = models.SparseVector(
+        indices=[1], values=[1.0]
+    )
+    client = MagicMock()
+    client.query_points.return_value.points = []
+
+    retrieve_hybrid(
+        "what is bm25?", client=client, collection_name="coll", query_vector=[0.5, 0.5]
+    )
+
+    mock_embed_query.assert_not_called()
+    _, kwargs = client.query_points.call_args
+    dense_prefetch = next(p for p in kwargs["prefetch"] if p.using == "dense")
+    assert dense_prefetch.query == [0.5, 0.5]
+
+
 @patch("app.retrieval.searcher.rerank")
 @patch("app.retrieval.searcher.retrieve_hybrid")
 def test_retrieve_reranked_composes_hybrid_and_rerank(
@@ -94,6 +127,7 @@ def test_retrieve_reranked_composes_hybrid_and_rerank(
         collection_name="coll",
         embedding_model=None,
         prefetch_limit=20,
+        query_vector=None,
     )
     mock_rerank.assert_called_once_with("query", ["candidate-chunks"], 5)
     assert result == ["final-chunks"]

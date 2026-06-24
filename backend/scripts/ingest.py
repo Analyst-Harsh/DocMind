@@ -11,6 +11,7 @@ import argparse
 
 from qdrant_client import QdrantClient
 
+from app.caching.cache import get_semantic_cache
 from app.config import get_settings
 from app.ingestion.chunker import ChunkStrategy, get_chunker
 from app.ingestion.embedder import embed_chunks, get_embedding_dim
@@ -106,6 +107,9 @@ def main() -> None:
     client = get_qdrant_client()
     for strategy in resolve_targets(args.strategy):
         ingest_strategy(strategy, docs, client, model, hybrid=args.hybrid)
+
+    flushed = get_semantic_cache().flush()
+    print(f"Flushed {flushed} cached responses (corpus re-ingested)")
 
     print("\n=== Ingestion complete ===")
 

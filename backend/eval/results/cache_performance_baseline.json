@@ -1,0 +1,222 @@
+{
+  "summary": {
+    "n": 35,
+    "avg_cost_usd": 0.0004719685714285714,
+    "cache_hit_rate": 0.0,
+    "p50_latency_ms_hit": null,
+    "p50_latency_ms_miss": 7984,
+    "p50_latency_ms_overall": 7984
+  },
+  "records": [
+    {
+      "question": "What two components are combined to make up a RAG model?",
+      "cost_usd": 0.00050295,
+      "latency_ms": 25664,
+      "cache_hit": false
+    },
+    {
+      "question": "How does the RAG-Sequence model differ from RAG-Token when generating an output sequence?",
+      "cost_usd": 0.0005763,
+      "latency_ms": 10404,
+      "cache_hit": false
+    },
+    {
+      "question": "Which pre-trained models does RAG use for its retriever and its generator?",
+      "cost_usd": 0.00046409999999999995,
+      "latency_ms": 7863,
+      "cache_hit": false
+    },
+    {
+      "question": "What does each layer of the Transformer's encoder consist of?",
+      "cost_usd": 0.0004919999999999999,
+      "latency_ms": 8744,
+      "cache_hit": false
+    },
+    {
+      "question": "How does multi-head attention differ from using a single attention function?",
+      "cost_usd": 0.0005088,
+      "latency_ms": 9657,
+      "cache_hit": false
+    },
+    {
+      "question": "What problem is the Ragas framework designed to solve when evaluating RAG pipelines?",
+      "cost_usd": 0.00051015,
+      "latency_ms": 9007,
+      "cache_hit": false
+    },
+    {
+      "question": "How does Ragas estimate the faithfulness of a generated answer?",
+      "cost_usd": 0.0005099999999999999,
+      "latency_ms": 8161,
+      "cache_hit": false
+    },
+    {
+      "question": "Why did the Ragas authors create the WikiEval dataset?",
+      "cost_usd": 0.00052125,
+      "latency_ms": 9312,
+      "cache_hit": false
+    },
+    {
+      "question": "What design choice makes Qdrant well suited to high-load production workloads?",
+      "cost_usd": 0.00041415,
+      "latency_ms": 7881,
+      "cache_hit": false
+    },
+    {
+      "question": "What vector search capabilities does Qdrant support beyond plain dense similarity search?",
+      "cost_usd": 0.00047864999999999995,
+      "latency_ms": 9010,
+      "cache_hit": false
+    },
+    {
+      "question": "What core workflow stages does Langfuse help teams with?",
+      "cost_usd": 0.0005785499999999999,
+      "latency_ms": 10952,
+      "cache_hit": false
+    },
+    {
+      "question": "What is the recommended way to run Langfuse in a production environment?",
+      "cost_usd": 0.00045134999999999994,
+      "latency_ms": 7621,
+      "cache_hit": false
+    },
+    {
+      "question": "What kinds of evaluation does Langfuse support for LLM applications?",
+      "cost_usd": 0.00049185,
+      "latency_ms": 8150,
+      "cache_hit": false
+    },
+    {
+      "question": "What two libraries does FastAPI build on, and what does each provide?",
+      "cost_usd": 0.00044084999999999996,
+      "latency_ms": 8627,
+      "cache_hit": false
+    },
+    {
+      "question": "What development-speed benefits does FastAPI claim over other frameworks?",
+      "cost_usd": 0.00042375000000000003,
+      "latency_ms": 7904,
+      "cache_hit": false
+    },
+    {
+      "question": "What capabilities does the Ragas library offer beyond computing evaluation scores?",
+      "cost_usd": 0.00051645,
+      "latency_ms": 9772,
+      "cache_hit": false
+    },
+    {
+      "question": "How can a user opt out of Ragas' usage data collection?",
+      "cost_usd": 0.00043725,
+      "latency_ms": 7677,
+      "cache_hit": false
+    },
+    {
+      "question": "What is tiktoken and what tokenization technique does it use?",
+      "cost_usd": 0.00046169999999999995,
+      "latency_ms": 7987,
+      "cache_hit": false
+    },
+    {
+      "question": "What desirable properties does Byte Pair Encoding have, according to tiktoken's documentation?",
+      "cost_usd": 0.0005080499999999999,
+      "latency_ms": 9525,
+      "cache_hit": false
+    },
+    {
+      "question": "How much faster is tiktoken than a comparable open-source tokenizer?",
+      "cost_usd": 0.00041834999999999995,
+      "latency_ms": 7320,
+      "cache_hit": false
+    },
+    {
+      "question": "What is the relationship between the dense retrieval described in the RAG paper and the search capability Qdrant provides?",
+      "cost_usd": 0.0004056,
+      "latency_ms": 7416,
+      "cache_hit": false
+    },
+    {
+      "question": "How do Ragas' evaluation metrics and Langfuse's platform features complement each other in an LLM application workflow?",
+      "cost_usd": 0.0005463,
+      "latency_ms": 9934,
+      "cache_hit": false
+    },
+    {
+      "question": "Why is the reference-free evaluation approach from the Ragas paper particularly well suited to how Langfuse evaluates production traces?",
+      "cost_usd": 0.00045449999999999993,
+      "latency_ms": 7467,
+      "cache_hit": false
+    },
+    {
+      "question": "How does the Ragas paper's definition of faithfulness relate to what the Ragas library actually provides?",
+      "cost_usd": 0.0005256,
+      "latency_ms": 8293,
+      "cache_hit": false
+    },
+    {
+      "question": "Is the reference-free evaluation philosophy from the Ragas paper still central to the Ragas library today?",
+      "cost_usd": 0.0004923,
+      "latency_ms": 7984,
+      "cache_hit": false
+    },
+    {
+      "question": "What role does the Transformer architecture from \"Attention Is All You Need\" play inside a RAG model?",
+      "cost_usd": 0.00044954999999999995,
+      "latency_ms": 7369,
+      "cache_hit": false
+    },
+    {
+      "question": "Why was a Transformer-based generator a natural fit for the RAG paper's architecture rather than a recurrent model?",
+      "cost_usd": 0.0005253,
+      "latency_ms": 8693,
+      "cache_hit": false
+    },
+    {
+      "question": "What is the training dataset used for BGE-large-en-v1.5?",
+      "cost_usd": 0.00045045,
+      "latency_ms": 7932,
+      "cache_hit": false
+    },
+    {
+      "question": "What is Qdrant's maximum supported vector dimension?",
+      "cost_usd": 0.00039945,
+      "latency_ms": 7972,
+      "cache_hit": false
+    },
+    {
+      "question": "How does Ragas handle evaluation of multilingual question-answer pairs?",
+      "cost_usd": 0.00044339999999999994,
+      "latency_ms": 7341,
+      "cache_hit": false
+    },
+    {
+      "question": "What pricing does Langfuse Cloud charge once usage exceeds its free tier?",
+      "cost_usd": 0.00041865,
+      "latency_ms": 7472,
+      "cache_hit": false
+    },
+    {
+      "question": "What is the minimum Python version required to run FastAPI?",
+      "cost_usd": 0.0003987,
+      "latency_ms": 6551,
+      "cache_hit": false
+    },
+    {
+      "question": "What text corpus was tiktoken's cl100k_base encoding trained on?",
+      "cost_usd": 0.00041265,
+      "latency_ms": 6245,
+      "cache_hit": false
+    },
+    {
+      "question": "What is the maximum input context window size supported by the Transformer architecture described in \"Attention Is All You Need\"?",
+      "cost_usd": 0.00049275,
+      "latency_ms": 6960,
+      "cache_hit": false
+    },
+    {
+      "question": "What latency overhead does Qdrant's vector quantization typically add to a single query?",
+      "cost_usd": 0.0003972,
+      "latency_ms": 6551,
+      "cache_hit": false
+    }
+  ]
+}

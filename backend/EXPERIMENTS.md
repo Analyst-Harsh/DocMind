@@ -268,3 +268,57 @@ revision only partly fixed; retrieval was already good for this category
 shouldn't move retrieval metrics.
 
 ---
+
+## Experiment 6 — Semantic caching
+
+**Question:** Does a Redis-backed semantic cache reduce average
+cost-per-query and latency on repeated/paraphrased traffic, without
+serving wrong answers to genuinely different questions?
+
+Calibrated against `eval/cache_threshold_pairs.yaml` (10 paraphrase pairs +
+8 non-paraphrase pairs pulled from the golden set, see
+`eval/results/cache_threshold_calibration.json`): minimum paraphrase
+similarity 0.7818, maximum non-paraphrase similarity 0.5500, threshold set
+to 0.75 (`app/config.py`).
+
+| Metric                            | No cache (baseline)         | Cache (warm)              |
+|------------------------------------|------------------------------|----------------------------|
+| Avg cost/query                    | $0.000472                    | $0.000367                  |
+| Cache hit rate                    | —                             | 22.2% (10/45)              |
+| p50 latency, cache hit             | —                             | 530.5 ms                   |
+| p50 latency, cache miss            | —                             | 8695 ms                    |
+| p50 latency, no cache (baseline)   | 7984 ms                       | —                          |
+
+**Finding:** Caching cut average cost per query by 22.3% ($0.000472 →
+$0.000367 across the warm run's 45 requests) and achieved a 22.2% hit rate
+(10/45) — exactly the expected ratio: the 10 paraphrased questions from
+`cache_threshold_pairs.yaml` all hit, and all 35 original golden-set
+questions missed (each is asked exactly once, before its paraphrase, so
+nothing had been cached for it yet). Latency confirms the predicted
+order-of-magnitude gap: p50 on a hit (530.5ms) is ~16x lower than p50 on a
+miss in the same run (8695ms) and ~15x lower than the no-cache baseline
+(7984ms). The hit path isn't literally single-digit milliseconds, though —
+it still pays for `embed_query()`'s OpenAI embedding call (needed to get a
+vector to check the cache with) plus an O(n) Redis `SCAN` + Python cosine
+pass over every live entry in the namespace. What it skips is the
+dominant cost — the generation call — which is why miss and baseline
+latency are both ~8s and nearly identical to each other.
+
+**Threshold reasoning:** The calibration set showed clean separation with
+no overlap — every paraphrase pair scored at or above 0.7818 cosine
+similarity, every non-paraphrase pair at or below 0.5500. The calibration
+script's literal recommendation is the midpoint of that gap (0.6659), but
+the threshold was set higher, at 0.75 — closer to the empirical paraphrase
+floor than to the midpoint — to favor precision: with only 10 paraphrase
+pairs in the calibration set, 0.7818 isn't guaranteed to be the true worst
+case real traffic will produce, so sitting near the midpoint risks a false
+hit (serving a cached answer to a meaningfully different question) the
+moment real-world paraphrase similarity dips below what this small sample
+observed. Moving closer to the paraphrase floor instead spends some of the
+gap's margin on the other failure mode — a false miss, where a genuine
+paraphrase scores between 0.6659 and 0.75 and pays full retrieval +
+generation cost instead of being served from cache — which is the cheaper
+mistake of the two: a false miss only costs what an uncached query already
+costs today, while a false hit returns a wrong answer to the user.
+
+---
