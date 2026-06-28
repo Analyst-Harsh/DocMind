@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { queryBackend } from "@/lib/api";
+import { streamBackend } from "@/lib/api";
 import { CONFIG } from "@/lib/config";
 import { ApiError, type Message, type QueryMeta } from "@/lib/types";
 
@@ -37,38 +37,42 @@ export function useChat() {
     [],
   );
 
-  /**
-   * Execute a query to the backend and update the corresponding assistant message with the result.
-   */
   const executeQuery = useCallback(
     async (question: string, targetId: string) => {
       const controller = new AbortController();
       abortRef.current = controller;
 
       try {
-        const data = await queryBackend(question, controller.signal);
-        const content =
-          data.answer.trim() === ""
-            ? CONFIG.ui.emptyAnswerFallback
-            : data.answer;
-
-        updateMessage(targetId, {
-          content,
-          sources: data.sources,
-          costUsd: data.cost_usd,
-          latencyMs: data.latency_ms,
-          cacheHit: data.cache_hit,
-          traceId: data.trace_id,
-          status: "complete",
-        });
-
-        setLastQueryMeta({
-          costUsd: data.cost_usd,
-          latencyMs: data.latency_ms,
-          cacheHit: data.cache_hit,
-          traceId: data.trace_id,
-        });
+        await streamBackend(
+          question,
+          controller.signal,
+          (token) =>
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === targetId
+                  ? { ...m, content: m.content + token, status: "streaming" }
+                  : m,
+              ),
+            ),
+          (meta) => {
+            updateMessage(targetId, {
+              status: "complete",
+              sources: meta.sources,
+              costUsd: meta.cost_usd,
+              latencyMs: meta.latency_ms,
+              cacheHit: meta.cache_hit,
+              traceId: meta.trace_id,
+            });
+            setLastQueryMeta({
+              costUsd: meta.cost_usd,
+              latencyMs: meta.latency_ms,
+              cacheHit: meta.cache_hit,
+              traceId: meta.trace_id,
+            });
+          },
+        );
       } catch (err) {
+        if ((err as { name?: string }).name === "AbortError") return;
         const errorMessage =
           err instanceof ApiError
             ? (err.detail ?? err.message)

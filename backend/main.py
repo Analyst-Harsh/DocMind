@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from app.caching.cache import get_semantic_cache
 from app.caching.schema import CachedResponse, CacheLookupResult
 from app.config import get_settings
-from app.generation.generator import generate_answer, stream_answer
+from app.generation.generator import generate_answer
 from app.ingestion.embedder import embed_query
 from app.ingestion.indexer import collection_name_for
 from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
+from app.streaming.pipeline import stream_query_pipeline
 from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
 
 app = FastAPI(title="DocMind", version="0.1.0")
@@ -185,14 +186,84 @@ def query(request: QueryRequest):
 
 @app.post("/query/stream")
 def query_stream(request: QueryRequest):
-    """Streaming endpoint for the frontend (Week 3)."""
-    chunks = retrieve(query=request.question, top_k=request.top_k)
-    if not chunks:
-        raise HTTPException(
-            status_code=404, detail="No relevant documents found"
-        )
+    """Streaming endpoint — full pipeline: embed → cache → retrieve → rerank → generate."""
+    trace_id = new_trace_id()
+    start_time = time.time()
+
+    embedding_model = HYBRID_MODEL if request.hybrid else None
+    resolved_model = embedding_model or settings.embedding_model
+    retrieval_mode = (
+        "dense"
+        if not request.hybrid
+        else ("hybrid_rerank" if settings.use_reranker else "hybrid")
+    )
+
+    query_vector = embed_query(request.question, model=embedding_model)
+
+    cache = get_semantic_cache()
+    cache_lookup = (
+        cache.check(query_vector, retrieval_mode, resolved_model)
+        if settings.enable_semantic_cache
+        else CacheLookupResult(hit=None, best_similarity=0.0)
+    )
+
+    if cache_lookup.hit:
+        chunks: list = []
+        sources: list[dict] = cache_lookup.hit.response.sources
+    else:
+        if request.hybrid:
+            retrieve_fn = (
+                retrieve_reranked if settings.use_reranker else retrieve_hybrid
+            )
+            chunks = retrieve_fn(
+                query=request.question,
+                top_k=request.top_k,
+                collection_name=collection_name_for(
+                    HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
+                ),
+                embedding_model=HYBRID_MODEL,
+                query_vector=query_vector,
+            )
+        else:
+            chunks = retrieve(
+                query=request.question,
+                top_k=request.top_k,
+                query_vector=query_vector,
+            )
+
+        if not chunks:
+            raise HTTPException(
+                status_code=404, detail="No relevant documents found"
+            )
+
+        sources = [
+            {
+                "chunk_id": c.chunk_id,
+                "doc_id": c.doc_id,
+                "doc_title": c.doc_title,
+                "chunk_index": c.chunk_index,
+                "score": c.score,
+                "source_path": c.source_path,
+            }
+            for c in chunks
+        ]
 
     return StreamingResponse(
-        stream_answer(question=request.question, chunks=chunks),
-        media_type="text/plain",
+        stream_query_pipeline(
+            question=request.question,
+            chunks=chunks,
+            cache_hit=cache_lookup.hit.response if cache_lookup.hit else None,
+            trace_id=trace_id,
+            start_time=start_time,
+            query_vector=query_vector,
+            sources=sources,
+            resolved_model=resolved_model,
+            retrieval_mode=retrieval_mode,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )

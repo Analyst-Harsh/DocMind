@@ -24,7 +24,7 @@ export interface Message {
   cacheHit?: boolean;
   traceId?: string;
   timestamp: Date;
-  status: "sending" | "complete" | "error";
+  status: "sending" | "streaming" | "complete" | "error";
   errorMessage?: string;
 }
 
@@ -46,3 +46,11 @@ export class ApiError extends Error {
 }
 
 export type ConnectionStatus = "connected" | "disconnected" | "checking";
+
+export interface StreamMetadata {
+  sources: Source[];
+  cost_usd: number;
+  latency_ms: number;
+  cache_hit: boolean;
+  trace_id: string;
+}
