@@ -26,7 +26,7 @@ HYBRID_MODEL = "text-embedding-3-small"
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
-    hybrid: bool = False
+    hybrid: bool = True
 
 
 class QueryResponse(BaseModel):
@@ -118,7 +118,9 @@ def query(request: QueryRequest):
                         "num_chunks": len(chunks),
                         "top_score": chunks[0].score if chunks else 0,
                         "chunk_ids": [c.chunk_id for c in chunks],
-                        "reranked": bool(request.hybrid and settings.use_reranker),
+                        "reranked": bool(
+                            request.hybrid and settings.use_reranker
+                        ),
                     }
                 )
 
@@ -140,6 +142,7 @@ def query(request: QueryRequest):
                     "chunk_id": c.chunk_id,
                     "doc_id": c.doc_id,
                     "doc_title": c.doc_title,
+                    "chunk_index": c.chunk_index,
                     "score": c.score,
                     "source_path": c.source_path,
                 }
@@ -150,7 +153,9 @@ def query(request: QueryRequest):
                 cache.write(
                     request.question,
                     query_vector,
-                    CachedResponse(answer=answer, sources=sources, cost_usd=cost_usd),
+                    CachedResponse(
+                        answer=answer, sources=sources, cost_usd=cost_usd
+                    ),
                     retrieval_mode,
                     resolved_model,
                 )
