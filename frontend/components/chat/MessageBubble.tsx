@@ -1,11 +1,13 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CitationMarker } from "./CitationMarker";
 import { SourcesSection } from "./SourcesSection";
-import { cn, formatTimestamp } from "@/lib/utils";
+import { formatTimestamp } from "@/lib/utils";
 import type { Message } from "@/lib/types";
 
 interface MessageBubbleProps {
@@ -13,7 +15,32 @@ interface MessageBubbleProps {
   onRetry: (id: string) => void;
 }
 
+const HIGHLIGHT_DURATION_MS = 2000;
+
 export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
+  const [highlightedCitation, setHighlightedCitation] = useState<
+    number | null
+  >(null);
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  const handleCitationClick = useCallback((n: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setHighlightedCitation(n);
+    setSourcesExpanded(true);
+    timerRef.current = setTimeout(
+      () => setHighlightedCitation(null),
+      HIGHLIGHT_DURATION_MS,
+    );
+  }, []);
+
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
@@ -58,6 +85,8 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
     );
   }
 
+  const citationMap = message.citationMap ?? {};
+
   return (
     <div className="flex justify-start">
       <div className="max-w-[80%] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg px-4 py-3">
@@ -75,14 +104,19 @@ export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
           )}
         </div>
 
-        <div className="prose prose-zinc dark:prose-invert prose-sm max-w-none text-[15px]">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {message.content}
-          </ReactMarkdown>
-        </div>
+        <CitationMarker
+          content={message.content}
+          citationMap={citationMap}
+          onCitationClick={handleCitationClick}
+        />
 
         {message.sources && message.sources.length > 0 && (
-          <SourcesSection sources={message.sources} />
+          <SourcesSection
+            sources={message.sources}
+            highlightedCitation={highlightedCitation}
+            expanded={sourcesExpanded}
+            onToggle={() => setSourcesExpanded((prev) => !prev)}
+          />
         )}
       </div>
     </div>

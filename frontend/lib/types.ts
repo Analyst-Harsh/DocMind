@@ -19,6 +19,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  citationMap?: Record<number, Source>;
   costUsd?: number;
   latencyMs?: number;
   cacheHit?: boolean;

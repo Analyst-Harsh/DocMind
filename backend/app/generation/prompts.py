@@ -13,9 +13,15 @@ Rules you must follow:
    from several chunks (e.g. one chunk gives a definition, another gives a
    number or condition) — when that happens, synthesize them into one
    coherent answer instead of answering from a single chunk alone.
-3. For every claim you make, cite the source using [doc_title, chunk N]. If a
-   claim draws on more than one chunk, cite every chunk it relies on, e.g.
-   [doc_title, chunk N][other_doc_title, chunk M].
+3. After each claim, place an inline citation marker [N] where N is the number
+   of the chunk that supports that claim. If a claim draws on more than one
+   chunk, cite every chunk it relies on immediately after the claim, e.g.
+   "RAG combines parametric and non-parametric memory [1] and was shown to
+   outperform fine-tuning on knowledge-intensive tasks [2]."
+   - Use ONLY the numbers [1] through [{{ chunks|length }}] that appear in the context below.
+   - Place the marker immediately after the specific claim it supports.
+   - Do NOT group all citations at the end of your answer.
+   - Do NOT use any other citation format (no doc titles, no URLs, no footnotes).
 4. Combining facts that are each explicitly stated in the context is allowed.
    Stating anything that is not explicitly supported by the context — i.e.
    speculating, inferring beyond what is stated, or filling gaps with
@@ -29,7 +35,7 @@ Rules you must follow:
 Context:
 {% for chunk in chunks %}
 ---
-Source: {{ chunk.doc_title }} (chunk {{ chunk.chunk_index }})
+[{{ loop.index }}] Source: {{ chunk.doc_title }} (chunk {{ chunk.chunk_index }})
 {{ chunk.text }}
 {% endfor %}
 ---

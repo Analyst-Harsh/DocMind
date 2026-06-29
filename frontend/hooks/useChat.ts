@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { streamBackend } from "@/lib/api";
-import { CONFIG } from "@/lib/config";
-import { ApiError, type Message, type QueryMeta } from "@/lib/types";
+import {
+  ApiError,
+  type Message,
+  type QueryMeta,
+  type Source,
+} from "@/lib/types";
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -55,9 +59,14 @@ export function useChat() {
               ),
             ),
           (meta) => {
+            const citationMap: Record<number, Source> = {};
+            meta.sources.forEach((source, index) => {
+              citationMap[index + 1] = source;
+            });
             updateMessage(targetId, {
               status: "complete",
               sources: meta.sources,
+              citationMap,
               costUsd: meta.cost_usd,
               latencyMs: meta.latency_ms,
               cacheHit: meta.cache_hit,
