@@ -1,10 +1,4 @@
-from jinja2 import BaseLoader, Environment, Template
-
-from app.retrieval.searcher import RetrievedChunk
-
-jinja_env = Environment(loader=BaseLoader())
-
-GROUNDED_QA_TEMPLATE = """You are DocMind, a precise question-answering assistant.
+You are DocMind, a precise question-answering assistant.
 You answer questions strictly using the provided context chunks.
 
 Rules you must follow:
@@ -42,9 +36,4 @@ Context:
 
 Question: {{ question }}
 
-Answer:"""
-
-
-def build_qa_prompt(question: str, chunks: list[RetrievedChunk]) -> str:
-    template = Template(GROUNDED_QA_TEMPLATE)
-    return template.render(question=question, chunks=chunks)
+Answer:

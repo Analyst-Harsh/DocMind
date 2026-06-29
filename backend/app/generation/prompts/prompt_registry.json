@@ -1,0 +1,30 @@
+{
+  "prompts": [
+    {
+      "name": "grounded_qa",
+      "version": "v1",
+      "file": "prompts/v1_grounded_qa.jinja2",
+      "description": "Baseline grounded Q&A. Citations use [doc_title, chunk N] format appended per-claim; context blocks are unlabelled.",
+      "introduced_in": "week1",
+      "eval_scores": {
+        "faithfulness": 0.74,
+        "answer_relevancy": 0.81,
+        "context_precision": 0.69,
+        "context_recall": 0.72
+      }
+    },
+    {
+      "name": "grounded_qa",
+      "version": "v2",
+      "file": "prompts/v2_grounded_qa.jinja2",
+      "description": "Inline [N] citation markers. Context blocks are numbered [1]…[N]; rule 3 requires per-claim [N] placement with explicit don't-group and don't-use-other-formats sub-rules.",
+      "introduced_in": "week3_day5",
+      "eval_scores": {
+        "faithfulness": null,
+        "answer_relevancy": null,
+        "context_precision": null,
+        "context_recall": null
+      }
+    }
+  ]
+}
