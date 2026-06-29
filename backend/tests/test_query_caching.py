@@ -45,7 +45,7 @@ def test_cache_miss_runs_full_pipeline_and_writes_cache(
         cost_usd=0.002,
     )
 
-    response = client.post("/query", json={"question": "What is RAG?"})
+    response = client.post("/query", json={"question": "What is RAG?", "hybrid": False})
 
     assert response.status_code == 200
     body = response.json()
@@ -80,7 +80,7 @@ def test_cache_hit_skips_retrieval_and_generation(
     )
     mock_get_cache.return_value = fake_cache
 
-    response = client.post("/query", json={"question": "What is RAG, basically?"})
+    response = client.post("/query", json={"question": "What is RAG, basically?", "hybrid": False})
 
     assert response.status_code == 200
     body = response.json()
