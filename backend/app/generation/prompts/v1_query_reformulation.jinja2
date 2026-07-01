@@ -1,0 +1,11 @@
+{# app/generation/prompts/v1_query_reformulation.jinja2 #}
+The following question could not be fully answered with the retrieved
+context. Generate a new, focused search query targeting specifically
+what's missing.
+
+Original question: {{ original_question }}
+What's missing: {{ missing_aspects | join(", ") }}
+
+Respond with ONLY the new search query text, no explanation, no quotes.
+The query should be specific enough to retrieve the missing information
+directly — avoid repeating concepts already covered by the original query.

@@ -1,0 +1,30 @@
+{# app/generation/prompts/v1_sufficiency_assessment.jinja2 #}
+You are assessing whether retrieved context is sufficient to fully
+answer a question. You are NOT answering the question — only judging
+whether the provided context contains enough information to do so.
+
+Question: {{ question }}
+
+Retrieved context:
+{% for chunk in chunks %}
+---
+[{{ loop.index }}] {{ chunk.text }}
+{% endfor %}
+---
+
+Respond in JSON only, no other text:
+{
+  "is_sufficient": true or false,
+  "reasoning": "one sentence explaining your judgment",
+  "missing_aspects": ["list of specific concepts or facts not covered, empty if sufficient"],
+  "confidence": "high" or "medium" or "low"
+}
+
+Rules:
+- is_sufficient is true only if the context could fully answer the
+  question without requiring outside knowledge
+- If the question has multiple parts, ALL parts must be covered for
+  sufficiency
+- missing_aspects should name specific concepts, not vague gaps
+  ("more detail needed" is not acceptable — name what's missing)
+- Be conservative: if you're unsure, mark insufficient with confidence "low"

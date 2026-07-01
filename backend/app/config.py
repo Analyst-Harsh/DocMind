@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     redis_port: int = 6379
     semantic_cache_ttl_seconds: int = 86400
     semantic_cache_similarity_threshold: float = 0.75
-    enable_semantic_cache: bool = True
+    enable_semantic_cache: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"

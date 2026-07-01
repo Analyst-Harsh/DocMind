@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from app.agent.router import router as agent_router
 from app.caching.cache import get_semantic_cache
 from app.caching.schema import CachedResponse, CacheLookupResult
 from app.config import get_settings
@@ -16,6 +17,7 @@ from app.streaming.pipeline import stream_query_pipeline
 from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
 
 app = FastAPI(title="DocMind", version="0.1.0")
+app.include_router(agent_router)
 settings = get_settings()
 
 # Hybrid (dense+BM25) retrieval is currently only ingested for this

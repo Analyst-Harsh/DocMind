@@ -17,7 +17,7 @@
       "name": "grounded_qa",
       "version": "v2",
       "file": "prompts/v2_grounded_qa.jinja2",
-      "description": "Inline [N] citation markers. Context blocks are numbered [1]…[N]; rule 3 requires per-claim [N] placement with explicit don't-group and don't-use-other-formats sub-rules.",
+      "description": "Inline [N] citation markers. Context blocks are numbered [1]...[N]; rule 3 requires per-claim [N] placement with explicit don't-group and don't-use-other-formats sub-rules.",
       "introduced_in": "week3_day5",
       "eval_scores": {
         "faithfulness": null,
@@ -25,6 +25,22 @@
         "context_precision": null,
         "context_recall": null
       }
+    },
+    {
+      "name": "sufficiency_assessment",
+      "version": "v1",
+      "file": "prompts/v1_sufficiency_assessment.jinja2",
+      "description": "Assesses whether retrieved context chunks are sufficient to fully answer a question. Returns JSON with is_sufficient, reasoning, missing_aspects, and confidence.",
+      "introduced_in": "week4",
+      "eval_scores": {}
+    },
+    {
+      "name": "query_reformulation",
+      "version": "v1",
+      "file": "prompts/v1_query_reformulation.jinja2",
+      "description": "Generates a focused new search query targeting what's missing from a prior retrieval. Returns bare query text (no JSON, no quotes) for direct embedding.",
+      "introduced_in": "week4",
+      "eval_scores": {}
     }
   ]
 }
