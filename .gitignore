@@ -11,3 +11,4 @@ dist/
 corpus/
 superpowers/
 .mypy/
+nul
