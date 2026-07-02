@@ -41,6 +41,14 @@
       "description": "Generates a focused new search query targeting what's missing from a prior retrieval. Returns bare query text (no JSON, no quotes) for direct embedding.",
       "introduced_in": "week4",
       "eval_scores": {}
+    },
+    {
+      "name": "partial_answer",
+      "version": "v1",
+      "file": "prompts/v1_partial_answer.jinja2",
+      "description": "Cap-reached honest answer: answers only what the chunks support and names missing_aspects the retrieval loop could not find.",
+      "introduced_in": "week4_day3",
+      "eval_scores": {}
     }
   ]
 }

@@ -55,7 +55,7 @@ def run_agent_loop(
         state.iteration += 1
 
         with traced_span(
-            f"agent-loop-iteration-{state.iteration}"
+            f"iteration-{state.iteration}"
         ) as iter_span:
             if state.iteration > 1:
                 last = state.sufficiency_history[-1]
@@ -73,9 +73,8 @@ def run_agent_loop(
                 state.query_history.append(state.current_query)
 
             seen_ids = {c.chunk_id for c in state.accumulated_chunks}
-            state.accumulated_chunks.extend(
-                c for c in new_chunks if c.chunk_id not in seen_ids
-            )
+            new_unique = [c for c in new_chunks if c.chunk_id not in seen_ids]
+            state.accumulated_chunks.extend(new_unique)
 
             result: SufficiencyResult = assess_sufficiency(
                 state.original_question, state.accumulated_chunks
@@ -85,6 +84,9 @@ def run_agent_loop(
 
             iter_span.update(
                 output={
+                    "query_used": state.current_query,
+                    "chunks_retrieved": len(new_chunks),
+                    "new_unique_chunks_added": len(new_unique),
                     "is_sufficient": result.is_sufficient,
                     "total_chunks": len(state.accumulated_chunks),
                     "missing_aspects": result.missing_aspects,
@@ -92,6 +94,7 @@ def run_agent_loop(
             )
 
             if result.is_sufficient:
+                state.loop_terminated_by = "sufficiency_reached"
                 break
     log.info(
         "agent loop completed",

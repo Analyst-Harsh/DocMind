@@ -9,7 +9,7 @@ from app.agent.loop import run_agent_loop
 from app.caching.cache import get_semantic_cache
 from app.caching.schema import CachedResponse, CacheLookupResult
 from app.config import get_settings
-from app.generation.generator import generate_answer
+from app.generation.generator import generate_answer, generate_partial_answer
 from app.ingestion.embedder import embed_query
 from app.ingestion.indexer import collection_name_for
 from app.retrieval.reranker import rerank
@@ -46,7 +46,8 @@ class AgentQueryResponse(BaseModel):
     latency_ms: int
     trace_id: str
     cache_hit: bool
-    iterations: int
+    iterations_used: int
+    loop_terminated_by: str
 
 
 @router.post("/query", response_model=AgentQueryResponse)
@@ -80,37 +81,57 @@ def agent_query(request: AgentQueryRequest):
             answer = lookup.hit.response.answer
             sources = lookup.hit.response.sources
             cost_usd = 0.0
-            iterations = 0
+            iterations_used = 0
+            loop_terminated_by = "cache_hit"
             cache_hit = True
         else:
             collection = collection_name_for(
                 _HYBRID_STRATEGY, _HYBRID_MODEL, hybrid=True
             )
-            state = run_agent_loop(
-                question=request.question,
-                top_k=request.top_k,
-                embedding_model=_HYBRID_MODEL,
-                collection_name=collection,
-            )
 
-            if not state.accumulated_chunks:
-                root.update(output={"error": "no_chunks_found"})
-                flush_traces()
-                raise HTTPException(
-                    status_code=404, detail="No relevant documents found."
+            with traced_span("agent-loop") as loop_span:
+                state = run_agent_loop(
+                    question=request.question,
+                    top_k=request.top_k,
+                    embedding_model=_HYBRID_MODEL,
+                    collection_name=collection,
                 )
 
-            state.accumulated_chunks = _finalize_chunks(
-                request.question, state.accumulated_chunks, request.top_k
-            )
+                if not state.accumulated_chunks:
+                    root.update(output={"error": "no_chunks_found"})
+                    flush_traces()
+                    raise HTTPException(
+                        status_code=404, detail="No relevant documents found."
+                    )
 
-            result = generate_answer(
-                question=request.question,
-                chunks=state.accumulated_chunks,
-            )
+                state.accumulated_chunks = _finalize_chunks(
+                    request.question, state.accumulated_chunks, request.top_k
+                )
+                loop_span.update(output={
+                    "total_iterations": state.iteration,
+                    "termination_reason": state.loop_terminated_by,
+                    "total_unique_chunks": len(state.accumulated_chunks),
+                })
+
+            last_check = state.sufficiency_history[-1] if state.sufficiency_history else None
+            missing_aspects = last_check.missing_aspects if (last_check and last_check.missing_aspects) else []
+
+            if state.loop_terminated_by == "sufficiency_reached":
+                result = generate_answer(
+                    question=request.question,
+                    chunks=state.accumulated_chunks,
+                )
+            else:
+                result = generate_partial_answer(
+                    question=request.question,
+                    chunks=state.accumulated_chunks,
+                    missing_aspects=missing_aspects,
+                )
+
             answer = result.answer
             cost_usd = result.cost_usd + state.loop_cost
-            iterations = state.iteration
+            iterations_used = state.iteration
+            loop_terminated_by = state.loop_terminated_by
             cache_hit = False
             sources = [
                 {
@@ -142,7 +163,8 @@ def agent_query(request: AgentQueryRequest):
                 "cost_usd": cost_usd,
                 "latency_ms": latency_ms,
                 "cache_hit": cache_hit,
-                "iterations": iterations,
+                "iterations_used": iterations_used,
+                "loop_terminated_by": loop_terminated_by,
             },
         )
 
@@ -155,5 +177,6 @@ def agent_query(request: AgentQueryRequest):
         latency_ms=latency_ms,
         trace_id=trace_id,
         cache_hit=cache_hit,
-        iterations=iterations,
+        iterations_used=iterations_used,
+        loop_terminated_by=loop_terminated_by,
     )

@@ -26,6 +26,7 @@ def _make_state(chunks: list[RetrievedChunk], iteration: int = 1, loop_cost: flo
     state.accumulated_chunks = chunks
     state.iteration = iteration
     state.loop_cost = loop_cost
+    state.loop_terminated_by = "sufficiency_reached"
     state.sufficiency_history = [
         SufficiencyResult(is_sufficient=True, reasoning="ok", missing_aspects=[], confidence="high", cost_usd=0.0)
     ]
@@ -34,10 +35,13 @@ def _make_state(chunks: list[RetrievedChunk], iteration: int = 1, loop_cost: flo
 
 @patch("app.agent.router.embed_query", return_value=FAKE_VECTOR)
 @patch("app.agent.router.get_semantic_cache")
-def test_cache_hit_returns_cached_answer(mock_get_cache, mock_embed):
+def test_cache_hit_returns_cached_answer(mock_get_cache, mock_embed, monkeypatch):
+    import app.agent.router as router_module
     from app.caching.cache import SemanticCache
     from app.caching.schema import CachedResponse
     from app.caching.tests.fakes import FakeRedis
+
+    monkeypatch.setattr(router_module.settings, "enable_semantic_cache", True)
 
     cache = SemanticCache(client=FakeRedis(), similarity_threshold=0.95)
     cache.write(
@@ -54,7 +58,8 @@ def test_cache_hit_returns_cached_answer(mock_get_cache, mock_embed):
     assert body["cache_hit"] is True
     assert body["answer"] == "cached answer"
     assert body["cost_usd"] == 0.0
-    assert body["iterations"] == 0
+    assert body["iterations_used"] == 0
+    assert body["loop_terminated_by"] == "cache_hit"
 
 
 @patch("app.agent.router.rerank")
@@ -85,7 +90,8 @@ def test_cache_miss_returns_agentic_answer(
     body = resp.json()
     assert body["cache_hit"] is False
     assert body["answer"] == "agentic answer"
-    assert body["iterations"] == 2
+    assert body["iterations_used"] == 2
+    assert body["loop_terminated_by"] == "sufficiency_reached"
     assert abs(body["cost_usd"] - 0.008) < 1e-9  # 0.005 + 0.003
     assert len(body["sources"]) == 1
     assert body["sources"][0]["chunk_id"] == "c1"

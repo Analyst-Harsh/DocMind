@@ -23,3 +23,4 @@ class AgentLoopState:
     sufficiency_history: list[SufficiencyResult] = field(default_factory=list)
     loop_cost: float = 0.0
     query_history: list[str] = field(default_factory=list)
+    loop_terminated_by: str = "cap_reached"

@@ -108,3 +108,26 @@ def test_loop_preserves_original_question_across_reformulations():
         state = run_agent_loop("original question")
 
     assert state.original_question == "original question"
+
+
+def test_loop_terminated_by_sufficiency_reached():
+    from app.agent.loop import run_agent_loop
+
+    with patch("app.agent.loop._retrieve", return_value=[_make_chunk("c1")]), \
+         patch("app.agent.loop.assess_sufficiency", return_value=_sufficient()):
+        state = run_agent_loop("question")
+
+    assert state.loop_terminated_by == "sufficiency_reached"
+
+
+def test_loop_terminated_by_cap_reached():
+    from app.agent.loop import MAX_ITERATIONS, run_agent_loop
+
+    with patch("app.agent.loop._retrieve", return_value=[_make_chunk("c1")]), \
+         patch("app.agent.loop.assess_sufficiency",
+               return_value=_insufficient(["always missing"])), \
+         patch("app.agent.loop.reformulate_query", return_value=("new query", 0.0)):
+        state = run_agent_loop("impossible question")
+
+    assert state.loop_terminated_by == "cap_reached"
+    assert state.iteration == MAX_ITERATIONS
