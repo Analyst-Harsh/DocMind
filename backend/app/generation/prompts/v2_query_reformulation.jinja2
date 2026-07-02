@@ -1,0 +1,15 @@
+{# app/generation/prompts/v2_query_reformulation.jinja2 #}
+Generate a new search query to retrieve information that is still missing
+after previous retrieval attempts.
+
+Original question: {{ original_question }}
+What's missing: {{ missing_aspects | join(", ") }}
+
+Queries already tried (do not repeat or paraphrase these):
+{% for q in previous_queries %}
+- {{ q }}
+{% endfor %}
+
+Respond with ONLY the new search query text, no explanation, no quotes.
+The query must approach the missing information from a different angle
+than the queries already tried above.

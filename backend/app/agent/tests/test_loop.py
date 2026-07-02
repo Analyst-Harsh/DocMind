@@ -59,7 +59,7 @@ def test_loop_reformulates_and_runs_second_iteration():
     assert len(state.accumulated_chunks) == 2
     assert state.current_query == "reranking mechanism RAG"
     mock_reform.assert_called_once_with(
-        "How does reranking work?", ["reranking mechanism"]
+        "How does reranking work?", ["reranking mechanism"], ["How does reranking work?"]
     )
 
 

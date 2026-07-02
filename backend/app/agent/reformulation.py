@@ -16,11 +16,13 @@ COST_PER_OUTPUT_TOKEN = 0.00000060  # $0.60 / 1M
 def reformulate_query(
     original_question: str,
     missing_aspects: list[str],
+    previous_queries: list[str],
 ) -> tuple[str, float]:
     prompt = get_registry().render(
         "query_reformulation",
         original_question=original_question,
         missing_aspects=missing_aspects,
+        previous_queries=previous_queries,
     )
 
     with traced_span(

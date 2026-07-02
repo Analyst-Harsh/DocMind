@@ -35,11 +35,27 @@
       "eval_scores": {}
     },
     {
+      "name": "sufficiency_assessment",
+      "version": "v2",
+      "file": "prompts/v2_sufficiency_assessment.jinja2",
+      "description": "Relaxed threshold: sufficient when context supports a useful, grounded answer — complete coverage not required. Removes conservative bias and the 'fully' requirement that caused cap-reaching on a bounded corpus.",
+      "introduced_in": "week5",
+      "eval_scores": {}
+    },
+    {
       "name": "query_reformulation",
       "version": "v1",
       "file": "prompts/v1_query_reformulation.jinja2",
       "description": "Generates a focused new search query targeting what's missing from a prior retrieval. Returns bare query text (no JSON, no quotes) for direct embedding.",
       "introduced_in": "week4",
+      "eval_scores": {}
+    },
+    {
+      "name": "query_reformulation",
+      "version": "v2",
+      "file": "prompts/v2_query_reformulation.jinja2",
+      "description": "Passes full query_history to prevent repeated/paraphrased queries. Requires previous_queries in template context.",
+      "introduced_in": "week5",
       "eval_scores": {}
     },
     {

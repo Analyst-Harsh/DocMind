@@ -13,7 +13,7 @@ from app.retrieval.searcher import (
 )
 from app.tracing.spans import traced_span
 
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 3
 
 settings = get_settings()
 log = get_logger(__name__)
@@ -54,14 +54,13 @@ def run_agent_loop(
     while state.iteration < MAX_ITERATIONS:
         state.iteration += 1
 
-        with traced_span(
-            f"iteration-{state.iteration}"
-        ) as iter_span:
+        with traced_span(f"iteration-{state.iteration}") as iter_span:
             if state.iteration > 1:
                 last = state.sufficiency_history[-1]
                 state.current_query, reform_cost = reformulate_query(
                     state.original_question,
                     last.missing_aspects,
+                    list(state.query_history),
                 )
                 state.loop_cost += reform_cost
 

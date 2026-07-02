@@ -322,3 +322,85 @@ mistake of the two: a false miss only costs what an uncached query already
 costs today, while a false hit returns a wrong answer to the user.
 
 ---
+
+## Experiment 7 — Agentic RAG vs naive RAG on multi-hop questions
+
+**Question:** Does an iterative retrieval loop (retrieve → assess sufficiency
+→ reformulate → retrieve again) produce measurably better answer quality
+than a single-pass retrieve-and-generate pipeline on the questions where
+one-shot retrieval is most likely to fail?
+
+**Comparison set:** 10 questions selected from `eval/ragas_dataset.yaml` —
+all 7 `multi_doc_synthesis` questions plus the 3 `factual_single_doc`
+questions with context_recall ≤ 0.50 in the Week 3 baseline. Excluded
+`not_in_corpus` questions (both pipelines should refuse equally, so they
+add no signal). Both pipelines used the same Qdrant collection, embedding
+model (`text-embedding-3-small`), chunking strategy (recursive), and
+generation model (GPT-4o-mini). Naive pipeline: `retrieve_reranked(top_k=5)
+→ generate_answer`. Agentic pipeline: `run_agent_loop(max_iterations=3,
+top_k=5) → rerank(accumulated_chunks, top_k=5) → generate_answer /
+generate_partial_answer`. Scored via RAGAS (GPT-4o-mini judge).
+Raw results: `eval/results/naive_rag_comparison.json` and
+`eval/results/agentic_rag_comparison.json`.
+
+**Prompt versions in effect:**
+- Sufficiency: v2 (threshold lowered from "fully answer" to "useful, grounded
+  answer"; v1 caused near-universal cap-reaching on this bounded corpus)
+- Query reformulation: v2 (passes full `query_history` to prevent the loop
+  generating the same query across iterations)
+
+| Metric             | Naive RAG | Agentic RAG | Delta            |
+|--------------------|-----------|-------------|------------------|
+| faithfulness       | 0.7708    | 0.7761      | +0.0052          |
+| answer_relevancy   | 0.5978    | 0.6103      | +0.0125          |
+| context_precision  | 0.7961    | 0.8893      | **+0.0932**      |
+| context_recall     | 0.8583    | 0.8583      | +0.0000          |
+| avg cost/query     | $0.00049  | $0.00123    | +$0.00074 (+151%)|
+| p50 latency        | 6747 ms   | 11866 ms    | +5119 ms (+76%)  |
+| p95 latency        | 12086 ms  | 32339 ms    | +20253 ms (+168%)|
+
+**Agentic iteration distribution (10 queries):**
+
+| Termination                          | Count |
+|--------------------------------------|-------|
+| Iteration 1 (sufficient immediately) | 8     |
+| Iteration 3                          | 1     |
+| Cap reached (3 iterations)           | 1     |
+
+**Finding:** The agentic loop's most notable result is what didn't move:
+context_recall is exactly flat (0.8583 both), which was the metric the loop
+was hypothesised to improve most directly. Context_precision jumped
+substantially (+9.3pp, 0.7961 → 0.8893), meaning the chunks the agentic
+pipeline ultimately surfaces are more relevant on average — but it isn't
+surfacing *more* of the ground-truth context, just selecting better within
+what retrieval can find. Faithfulness and answer_relevancy improved slightly
+(+0.0052 and +0.0125), but neither delta is large enough to be conclusive
+on a 10-question set.
+
+The iteration distribution is the key diagnostic: 8 of 10 queries terminated
+at iteration 1 — the v2 sufficiency threshold declared the first retrieval
+pass sufficient immediately, making the agentic loop functionally equivalent
+to naive RAG plus one extra sufficiency-assessment LLM call for 80% of
+queries. This is the cost you see in the table: $0.00123 vs $0.00049 (2.5x
+more expensive) even though only 2 queries actually triggered additional
+retrieval. The 1 cap-reached query represents a genuine multi-hop gap —
+3 iterations with different reformulated queries still couldn't satisfy
+sufficiency — which on a small bounded corpus is an expected hard limit,
+not a loop failure.
+
+**What this means for the pipeline:**
+
+- The context_precision gain (+9.3pp) is real: reformulating around missing
+  aspects, even once, produces a more targeted candidate pool for the reranker,
+  which shows up in precision. This is the loop working as designed for the 2
+  queries that actually iterated.
+- The flat context_recall says the corpus ceiling is the binding constraint,
+  not the number of retrieval passes. Information the first pass misses is
+  generally not found by later passes — reformulated queries converge on the
+  same document space.
+- At 2.5x cost and 1.75x p50 latency for +9.3pp precision and negligible
+  quality improvement elsewhere, the agentic loop is not a straightforward win
+  on this corpus at this scale. Whether the precision gain justifies the
+  overhead is a product decision, not a retrieval one.
+
+---
