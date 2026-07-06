@@ -110,6 +110,98 @@ def upsert_chunks(
     log.info(f"Upserted {len(points)} points into {collection_name}")
 
 
+def multimodal_collection_name(embedding_model: str, hybrid: bool = False) -> str:
+    """
+    Collection name for table chunks, separate from the strategy-based text
+    collections so the two pipelines can be compared directly in Qdrant.
+    """
+    safe_model = embedding_model.replace("/", "-")
+    suffix = "_hybrid" if hybrid else ""
+    return f"multimodal_{safe_model}{suffix}"
+
+
+def upsert_table_chunks(
+    client: QdrantClient,
+    collection_name: str,
+    chunk_embeddings: list[tuple[Chunk, list[float]]],
+):
+    """
+    Upsert table chunks into Qdrant, including table-specific payload fields
+    (table_markdown, table_headers, page_number, etc.) that upsert_chunks omits.
+    """
+    points = []
+    for chunk, vector in chunk_embeddings:
+        points.append(
+            PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
+                vector=vector,
+                payload={
+                    "chunk_id": chunk.chunk_id,
+                    "doc_id": chunk.doc_id,
+                    "doc_title": chunk.doc_title,
+                    "text": chunk.text,
+                    "token_count": chunk.token_count,
+                    "chunk_index": chunk.chunk_index,
+                    "doc_type": chunk.doc_type,
+                    "source_path": chunk.source_path,
+                    "tags": chunk.tags,
+                    "table_markdown": chunk.table_markdown,
+                    "table_headers": chunk.table_headers,
+                    "table_index": chunk.table_index,
+                    "page_number": chunk.page_number,
+                    "row_count": chunk.row_count,
+                    "col_count": chunk.col_count,
+                    "is_table": chunk.is_table,
+                },
+            )
+        )
+
+    for i in range(0, len(points), 100):
+        client.upsert(collection_name=collection_name, points=points[i : i + 100])
+    log.info(f"Upserted {len(points)} table points into {collection_name}")
+
+
+def upsert_table_chunks_hybrid(
+    client: QdrantClient,
+    collection_name: str,
+    chunk_embeddings: list[tuple[Chunk, list[float]]],
+    sparse_embeddings: list[tuple[Chunk, SparseVector]],
+):
+    """Hybrid variant of upsert_table_chunks with dense + BM25 sparse vectors."""
+    points = []
+    for (chunk, dense_vec), (_, sparse_vec) in zip(
+        chunk_embeddings, sparse_embeddings, strict=True
+    ):
+        points.append(
+            PointStruct(
+                id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),
+                vector={"dense": dense_vec, "bm25": sparse_vec},
+                payload={
+                    "chunk_id": chunk.chunk_id,
+                    "doc_id": chunk.doc_id,
+                    "doc_title": chunk.doc_title,
+                    "text": chunk.text,
+                    "token_count": chunk.token_count,
+                    "chunk_index": chunk.chunk_index,
+                    "doc_type": chunk.doc_type,
+                    "source_path": chunk.source_path,
+                    "tags": chunk.tags,
+                    "table_markdown": chunk.table_markdown,
+                    "table_headers": chunk.table_headers,
+                    "table_index": chunk.table_index,
+                    "page_number": chunk.page_number,
+                    "row_count": chunk.row_count,
+                    "col_count": chunk.col_count,
+                    "is_table": chunk.is_table,
+                },
+            )
+        )
+
+    for i in range(0, len(points), 100):
+        client.upsert(collection_name=collection_name, points=points[i : i + 100])
+    log.info(f"Upserted {len(points)} hybrid table points into {collection_name}")
+
+
 def ensure_hybrid_collection(
     client: QdrantClient, collection_name: str, vector_size: int
 ):

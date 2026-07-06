@@ -19,6 +19,14 @@ class Chunk:
     source_path: str
     tags: list[str]
     chunking_strategy: str
+    # Table-specific fields — None for non-table chunks
+    table_markdown: str | None = None
+    table_headers: list[str] | None = None
+    table_index: int | None = None
+    page_number: int | None = None
+    row_count: int | None = None
+    col_count: int | None = None
+    is_table: bool = False
 
 
 DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " "]
