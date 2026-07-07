@@ -1,0 +1,202 @@
+# Multimodal RAGAS evaluation set: table-only, diagram-only, and hybrid
+# questions grounded in Docling-extracted tables and GPT-4o-Vision figure
+# captions from the attention and RAG papers. Loaded via the same
+# load_ragas_dataset() as eval/ragas_dataset.yaml. Used to compare the
+# text-only baseline collection against the multimodal (table+figure)
+# collection in scripts/run_multimodal_comparison.py.
+#
+# Every fact below was verified against the actual PyMuPDF text extraction
+# the text-only baseline pipeline indexes (not just Docling's cleaner
+# extraction) to confirm it is not independently restated as a complete,
+# well-formed prose sentence anywhere in the corpus:
+#   - table_only facts exist only inside a table's scrambled, column-major
+#     flattened text (PyMuPDF has no notion of table structure, so it
+#     interleaves numbers with no row/column grouping) -- never as a
+#     narrating sentence like "the base model achieves 27.3 BLEU".
+#   - diagram_only facts do not appear anywhere in the extracted text at
+#     all (screenshots/heatmaps have no embedded text layer) or appear
+#     only as a raw visual detail the paper's own printed caption doesn't
+#     spell out (e.g. which specific word an arrow points to).
+#   - hybrid facts pair a genuinely prose-stated claim with a genuinely
+#     table/figure-only value needed to complete the answer.
+# Earlier drafts of this file included several architecture-diagram
+# questions (encoder sub-layer order, scaled dot-product attention steps,
+# multi-head concatenation, RAG's retriever/generator description) that
+# turned out to be fully restated in the papers' own body prose -- both
+# papers narrate their architecture diagrams exhaustively, since that's
+# standard practice for ML papers. Those were dropped rather than kept
+# under a misleading category label; genuinely diagram-only content in
+# this corpus is scarcer than table-only content, concentrated in
+# qualitative figures (heatmaps, UI screenshots) and specific visual
+# details (which word an attention line points to) the prose omits.
+items:
+- question: What BLEU score did the base Transformer model achieve on the WMT
+    2014 English-to-German task, according to the model comparison table, and
+    how does it compare to the "big" variant?
+  reference_answer: >-
+    The base Transformer model achieves 27.3 BLEU on WMT 2014
+    English-to-German, while the larger "big" variant reaches 28.4 BLEU on
+    the same task, per the results table.
+  source_docs: [attention-paper]
+  category: table_only
+- question: What development BLEU score and perplexity does the Transformer's
+    architecture ablation table report when using a single attention head
+    instead of eight?
+  reference_answer: >-
+    With a single attention head, the ablation table reports a development
+    BLEU score of 24.9 and perplexity of 5.29, versus 25.8 BLEU and 4.92
+    perplexity for the standard eight-head base configuration.
+  source_docs: [attention-paper]
+  category: table_only
+- question: How does development perplexity and BLEU change in the architecture
+    ablation table when d_model is reduced from 512 to 256?
+  reference_answer: >-
+    Reducing d_model from 512 to 256 worsens development perplexity from
+    4.92 to 5.75 and lowers BLEU from 25.8 to 24.5, according to the
+    architecture ablation table.
+  source_docs: [attention-paper]
+  category: table_only
+- question: What parameter count does the architecture ablation table list for
+    the base Transformer configuration?
+  reference_answer: >-
+    The architecture ablation table lists the base Transformer
+    configuration as having approximately 65 million parameters, shown as
+    65×10^6 in the table's rightmost column.
+  source_docs: [attention-paper]
+  category: table_only
+- question: What BLEU score, perplexity, and parameter count does the
+    architecture ablation table report for the "big" Transformer
+    configuration?
+  reference_answer: >-
+    The table reports the "big" configuration achieving a development BLEU
+    score of 26.4 and perplexity of 4.33, using approximately 213 million
+    parameters trained over 300,000 steps.
+  source_docs: [attention-paper]
+  category: table_only
+- question: According to the generation test-scores table, what BLEU-1 score
+    does RAG-Sequence achieve on MS-MARCO generation, compared to BART?
+  reference_answer: >-
+    The generation test-scores table reports RAG-Sequence achieving a
+    BLEU-1 score of 44.2 on MS-MARCO generation, outperforming BART's 41.6
+    BLEU-1 score on the same task.
+  source_docs: [rag-paper]
+  category: table_only
+- question: What ratio of distinct to total tri-grams does the diversity table
+    report for RAG-Sequence's Jeopardy question generation output, compared
+    to BART's?
+  reference_answer: >-
+    The diversity table reports RAG-Sequence producing 53.8% distinct
+    tri-grams on Jeopardy question generation, well above BART's 32.4%,
+    indicating RAG generates more diverse output.
+  source_docs: [rag-paper]
+  category: table_only
+- question: What does the token-importance heatmap comparing two candidate
+    documents about Hemingway visually show, and which specific phrases
+    stand out as most significant?
+  reference_answer: >-
+    The heatmap shades tokens by importance across two candidate documents,
+    with the darkest cells falling on the phrases "The Sun Also Rises" and
+    "A Farewell to Arms," the two Hemingway novel titles the query is
+    trying to match.
+  source_docs: [rag-paper]
+  category: diagram_only
+- question: What task does the crowdsourcing annotation interface screenshot
+    show evaluators performing, and what options are they given?
+  reference_answer: >-
+    The screenshot shows evaluators judging which of two sentences about a
+    subject (Hemingway) is more factually true, choosing between four
+    options: sentence A is true, sentence B is true, both are true, or
+    both are false.
+  source_docs: [rag-paper]
+  category: diagram_only
+- question: In the attention visualization for anaphora resolution (layer 5,
+    heads 5 and 6), which words does the pronoun "its" show the strongest
+    attention connections to?
+  reference_answer: >-
+    The visualization shows the pronoun "its" attending most strongly to
+    "Law" and "application," the two words that together resolve what
+    "its" refers to in the sentence.
+  source_docs: [attention-paper]
+  category: diagram_only
+- question: What color-coding scheme does the RAG system architecture diagram
+    use to distinguish between its three example query types?
+  reference_answer: >-
+    The diagram color-codes its three example query types: blue for
+    question answering, green for fact verification, and purple for
+    question generation, each flowing through the same
+    encoder-retriever-generator pipeline.
+  source_docs: [rag-paper]
+  category: diagram_only
+- question: The abstract claims the Transformer improves over the existing best
+    results, including ensembles, by over 2 BLEU — which specific prior
+    ensemble model does the results table identify as the previous best,
+    and what BLEU score did it achieve?
+  reference_answer: >-
+    The results table identifies the ConvS2S Ensemble as the prior best,
+    scoring 26.36 BLEU on English-to-German, about 2 points below the
+    Transformer (big)'s 28.4 BLEU, matching the abstract's claim.
+  source_docs: [attention-paper]
+  category: hybrid
+- question: The paper states that translation quality "drops off with too many
+    heads" — what development BLEU and perplexity values does the
+    architecture ablation table report for the 16-head versus 32-head
+    configurations that illustrate this?
+  reference_answer: >-
+    The table shows 16 heads achieving 4.91 perplexity and 25.8 BLEU,
+    matching the base model's quality, while 32 heads worsens to 5.01
+    perplexity and 25.4 BLEU, illustrating the claim.
+  source_docs: [attention-paper]
+  category: hybrid
+- question: The abstract describes RAG as combining parametric memory (the
+    generator) and non-parametric memory (the retrieval index) — what
+    specific mathematical symbols does the system diagram use to label
+    these two components?
+  reference_answer: >-
+    The diagram labels the retriever pη, marking it the non-parametric
+    component, and the generator pθ, marking it the parametric component,
+    directly matching the abstract's parametric and non-parametric memory
+    framing.
+  source_docs: [rag-paper]
+  category: hybrid
+- question: The paper's discussion notes that T5-11B+SSM achieves only 28.9
+    Exact Match on Natural Questions — how does this compare to
+    RAG-Sequence's score and to the DPR closed-book baseline shown in the
+    open-domain QA results table?
+  reference_answer: >-
+    RAG-Sequence scores 44.5 Exact Match on Natural Questions, well above
+    both the 28.9 T5-11B+SSM achieves and the DPR closed-book baseline's
+    41.5 shown in the same results table.
+  source_docs: [rag-paper]
+  category: hybrid
+- question: The generation examples table shows BART's answer to the query
+    "define middle ear" as factually incorrect — how does this specific
+    example support the abstract's claim that RAG generates more factual
+    language than a parametric-only baseline?
+  reference_answer: >-
+    BART incorrectly defines the middle ear as being "between the middle
+    ear and the nose," while RAG-Token and RAG-Sequence both give
+    factually correct definitions, concretely illustrating the abstract's
+    factual-accuracy claim.
+  source_docs: [rag-paper]
+  category: hybrid
+- question: The methodology section says the retriever indexes a single
+    Wikipedia dump split into 21 million documents — how do the
+    task-specific training set sizes in the datasets table compare in
+    scale to this retrieval index?
+  reference_answer: >-
+    The datasets table's task-specific training sets are far smaller than
+    the 21-million-document Wikipedia index, ranging from about 3,400
+    WebQuestions examples up to roughly 153,700 MS-MARCO examples.
+  source_docs: [rag-paper]
+  category: hybrid
+- question: The paper observes that "reducing the attention key size dk hurts
+    model quality" — what perplexity, BLEU, and parameter values does the
+    architecture ablation table report for the dk=16 versus dk=32
+    configurations that support this?
+  reference_answer: >-
+    The table shows dk=16 giving 5.16 perplexity, 25.1 BLEU, and 58
+    million parameters, while dk=32 improves to 5.01 perplexity, 25.4
+    BLEU, and 60 million parameters, supporting the claim that a smaller
+    key size hurts quality.
+  source_docs: [attention-paper]
+  category: hybrid

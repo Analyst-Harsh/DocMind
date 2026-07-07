@@ -18,6 +18,9 @@ ALLOWED_CATEGORIES = {
     "factual_single_doc",
     "multi_doc_synthesis",
     "not_in_corpus",
+    "table_only",
+    "diagram_only",
+    "hybrid",
 }
 MIN_REFERENCE_WORDS = 8
 MAX_REFERENCE_WORDS = 60

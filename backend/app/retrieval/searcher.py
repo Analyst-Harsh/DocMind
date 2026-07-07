@@ -23,6 +23,8 @@ class RetrievedChunk:
     score: float
     source_path: str
     chunk_index: int
+    is_table: bool = False
+    is_figure: bool = False
 
 
 def retrieve(
@@ -142,6 +144,90 @@ def retrieve_reranked(
     return rerank(query, candidates, top_k)
 
 
+def retrieve_with_multimodal_quota(
+    query: str,
+    top_k: int = 5,
+    multimodal_slots: int = 2,
+    client: QdrantClient | None = None,
+    collection_name: str | None = None,
+    embedding_model: str | None = None,
+    candidate_pool_size: int = 20,
+    query_vector: list[float] | None = None,
+) -> list[RetrievedChunk]:
+    """
+    Two independently-filtered hybrid searches instead of one: up to
+    multimodal_slots candidates from is_table/is_figure chunks, and up to
+    top_k - multimodal_slots from everything else, each reranked and
+    truncated on its own pool. Guarantees multimodal representation in the
+    final top-k whenever multimodal candidates exist for the query,
+    regardless of how RRF fusion would rank them against prose chunks in
+    an unfiltered search. If a pool has fewer candidates than its
+    reservation, that reservation goes unfilled -- the result can be
+    shorter than top_k.
+    """
+    if client is None:
+        client = get_qdrant_client()
+
+    if query_vector is None:
+        query_vector = embed_query(query, model=embedding_model)
+    sparse_vector = embed_query_sparse(query)
+
+    multimodal_filter = models.Filter(
+        should=[
+            models.FieldCondition(
+                key="is_table", match=models.MatchValue(value=True)
+            ),
+            models.FieldCondition(
+                key="is_figure", match=models.MatchValue(value=True)
+            ),
+        ]
+    )
+    prose_filter = models.Filter(
+        must_not=[
+            models.FieldCondition(
+                key="is_table", match=models.MatchValue(value=True)
+            ),
+            models.FieldCondition(
+                key="is_figure", match=models.MatchValue(value=True)
+            ),
+        ]
+    )
+
+    def _filtered_hybrid(query_filter: models.Filter) -> list[RetrievedChunk]:
+        results = client.query_points(
+            collection_name=collection_name or settings.qdrant_collection,
+            prefetch=[
+                models.Prefetch(
+                    query=query_vector,
+                    using="dense",
+                    limit=candidate_pool_size,
+                    filter=query_filter,
+                ),
+                models.Prefetch(
+                    query=sparse_vector,
+                    using="bm25",
+                    limit=candidate_pool_size,
+                    filter=query_filter,
+                ),
+            ],
+            query=models.FusionQuery(fusion=models.Fusion.RRF),
+            query_filter=query_filter,
+            limit=candidate_pool_size,
+            with_payload=True,
+        )
+        return _points_to_chunks(results.points)
+
+    multimodal_candidates = _filtered_hybrid(multimodal_filter)
+    prose_candidates = _filtered_hybrid(prose_filter)
+
+    multimodal_top = rerank(query, multimodal_candidates, multimodal_slots)
+    prose_top = rerank(query, prose_candidates, top_k - multimodal_slots)
+
+    result = multimodal_top + prose_top
+    result.sort(key=lambda c: c.score, reverse=True)
+    return result
+
+
 def _points_to_chunks(points) -> list[RetrievedChunk]:
     return [
         RetrievedChunk(
@@ -160,6 +246,12 @@ def _points_to_chunks(points) -> list[RetrievedChunk]:
             chunk_index=r.payload.get("chunk_index", "")
             if r.payload is not None
             else 0,
+            is_table=r.payload.get("is_table", False)
+            if r.payload is not None
+            else False,
+            is_figure=r.payload.get("is_figure", False)
+            if r.payload is not None
+            else False,
         )
         for r in points
     ]

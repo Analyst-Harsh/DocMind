@@ -404,3 +404,138 @@ not a loop failure.
   overhead is a product decision, not a retrieval one.
 
 ---
+
+## Experiment 8 — Table/figure-augmented (multimodal) retrieval vs text-only baseline
+
+**Question:** Does supplementing the index with Docling-extracted table
+chunks (KV-formatted rows) and GPT-4o-Vision figure captions, alongside
+the same recursively-chunked PDF prose, improve retrieval-augmented
+generation on questions whose answers live specifically in table cells,
+figure content, or a mix of prose and table/figure content?
+
+**Comparison set:** 18 questions from `eval/multimodal_dataset.yaml` (7
+`table_only`, 4 `diagram_only`, 7 `hybrid`), grounded against the attention
+and RAG papers and verified fact-by-fact against the actual baseline text
+extraction to confirm no answer is independently restated as a complete
+prose sentence outside its source table/figure. Both pipelines used the
+same embedding model (`text-embedding-3-small`), hybrid dense+BM25
+retrieval, cross-encoder reranking (`BAAI/bge-reranker-base`), and
+generation model (GPT-4o-mini); the only variable in the primary
+comparison is which Qdrant collection is queried —
+`docmind_recursive_text-embedding-3-small_hybrid` (text-only) vs
+`multimodal_text-embedding-3-small_hybrid` (tables as KV text + figure
+captions + the same PDF prose). Scored via RAGAS (GPT-4o-mini judge). Raw
+results: `eval/results/text_baseline_comparison.json` and
+`eval/results/multimodal_comparison.json`.
+
+| Metric             | Text Baseline | Multimodal (unified top-5) | Delta       |
+|---------------------|---------------|------------------------------|-------------|
+| faithfulness        | 0.3580        | 0.4960                       | +0.1380     |
+| answer_relevancy    | 0.5952        | not captured¹                 | —           |
+| context_precision   | 0.7364        | 0.5673                       | -0.1691     |
+| context_recall      | 0.8889        | 0.7130                       | -0.1759     |
+| avg cost/query      | $0.000504     | not captured¹                 | —           |
+| p50 latency         | 2662ms        | 2662ms                        | +0ms        |
+| p95 latency         | 4450ms        | not captured¹                 | —           |
+| multimodal hit rate | n/a           | not captured¹                 | —           |
+
+¹ This run's raw output was superseded on disk by the follow-up
+two-pool-retrieval test below before these fields were archived. Only the
+four metrics above were recorded before the overwrite.
+
+**Finding:** Unlike Experiment 7 (agentic vs naive RAG), where every
+metric moved in the expected direction, multimodal retrieval is a mixed
+result even on a question set purpose-built to need table/figure content.
+Faithfulness improved (+0.138) — when the multimodal pipeline gets the
+right chunk, GPT-4o-mini can extract and cite the structured KV/caption
+content cleanly. But both context_precision (-0.169) and context_recall
+(-0.176) regressed relative to the text baseline. Two separable causes,
+both confirmed against actual retrieved contexts rather than inferred from
+the aggregate numbers alone:
+
+- **RAGAS's judge is format-sensitive.** Per-category faithfulness on the
+  saved run shows `table_only` scoring fine (text baseline 0.452 vs
+  multimodal 0.464 — comparable) while `diagram_only` drops sharply
+  (0.375 → 0.197). Spot-checking individual records earlier in this
+  investigation found answers that were verbatim-correct against
+  KV-formatted table context still scoring `faithfulness=0.0` — the
+  NLI-style statement judge doesn't reliably recognize entailment against
+  `Header: value | Header: value` context shaped unlike the prose it was
+  presumably calibrated on. This inflates the apparent quality gap in
+  either direction depending on which chunk type dominates a category.
+- **Reranking within a single unfiltered top-5 doesn't reliably surface
+  the correct table among several competing ones.** The base-model BLEU
+  question (`Table 2`, containing the literal answer "27.3 BLEU") is a
+  clean example: `Table 3` (a much larger, more finely-chunked ablation
+  table covering the same "base Transformer" terminology) kept winning
+  the reranker's relevance score over `Table 2`, so the model answered
+  with the *big* model's 28.4 instead of the base model's 27.3 — a wrong
+  answer confidently presented as a "hit."
+
+**Follow-up experiment — two-pool retrieval:** Tested reserving fixed
+slots (2 multimodal + 3 prose) instead of unified top-k competition, via
+two independently Qdrant-filtered hybrid searches
+(`retrieve_with_multimodal_quota` in `app/retrieval/searcher.py`), to
+address the context precision drop observed in the primary run.
+
+| Metric             | Unified top-5 | 2+3 pooled | Delta   |
+|---------------------|---------------|------------|---------|
+| faithfulness         | 0.4960        | 0.3703     | -0.1257 |
+| answer_relevancy     | not captured  | 0.6103     | —       |
+| context precision    | 0.5673        | 0.5993     | +0.0320 |
+| context recall       | 0.7130        | 0.5556     | -0.1574 |
+| avg cost/query       | not captured  | $0.00043   | —       |
+| p50 latency          | 2662ms        | 3533ms     | +871ms  |
+| p95 latency          | not captured  | 5450ms     | —       |
+| hit rate (all cats.) | not captured  | 100%       | —       |
+
+Both columns here are the multimodal arm under the two retrieval
+strategies (text-baseline is not part of this comparison — see the
+primary table above for that reference point).
+
+Reserving slots did raise context_precision (+0.032) and pushed hit rate
+to 100% across every category — the mechanism itself works exactly as
+designed: `attention-paper_table_2` (the correct chunk for the base-BLEU
+question above) is now guaranteed a place in its own filtered candidate
+pool instead of losing an unfiltered fusion race against ten prose
+chunks. But it **still answered the base-BLEU question incorrectly**,
+because the reranker, given only table/figure candidates to choose from,
+*still* preferred `Table 3`'s ablation rows over `Table 2`'s actual
+answer — pooling fixes candidate-pool exclusion, not reranker
+mis-scoring within an already-correct pool. Context_recall also dropped
+further (-0.157 vs. unified top-5), and p50 latency rose by 871ms from
+running two filtered searches instead of one.
+
+**Conclusion:** Primary result (unified top-5) is reported as the
+representative multimodal pipeline. The precision/recall tradeoff from
+pooling suggests the better production fix is adaptive retrieval
+(classify query type, allocate slots dynamically) or BM25-first retrieval
+for table content specifically — both flagged as follow-up work rather
+than implemented here, to keep Week 4 scoped.
+
+**What this means for the pipeline:**
+
+- Adding structured table/figure chunks to the index is not a free win:
+  it measurably helps faithfulness when the right chunk is retrieved, but
+  a naive drop-in (same collection, same unified reranking) can *hurt*
+  precision/recall relative to plain text if reranking doesn't
+  consistently distinguish between competing tables covering similar
+  terminology.
+- The hit-rate metric (does a table/figure chunk merely appear in the
+  top-5) is not sufficient on its own to certify a retrieval fix — a
+  "hit" can still be the wrong table. Any future evaluation of table
+  retrieval should check chunk *identity* against the specific fact
+  needed, not just chunk *type*.
+- Reserving retrieval slots by chunk type is a real, verified mechanism
+  (confirmed against live Qdrant data) for guaranteeing candidate-pool
+  inclusion, but it's not a substitute for the reranker actually scoring
+  the correct chunk highest — and it adds latency and reduces recall,
+  a real cost. It's a partial fix to one specific failure mode, not a
+  general improvement.
+- RAGAS's LLM-judge metrics (faithfulness in particular) appear sensitive
+  to context formatting in ways that aren't yet well understood on this
+  corpus — comparisons between a KV-formatted-context pipeline and a
+  prose-context pipeline should be read with that caveat until the judge
+  behavior is investigated further.
+
+---
