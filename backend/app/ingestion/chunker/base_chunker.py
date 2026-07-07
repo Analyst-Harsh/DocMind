@@ -27,6 +27,10 @@ class Chunk:
     row_count: int | None = None
     col_count: int | None = None
     is_table: bool = False
+    # Figure-specific fields — None for non-figure chunks
+    is_figure: bool = False
+    figure_index: int | None = None
+    figure_caption: str | None = None
 
 
 DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", " "]
