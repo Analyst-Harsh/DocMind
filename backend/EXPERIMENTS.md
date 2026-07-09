@@ -539,3 +539,157 @@ than implemented here, to keep Week 4 scoped.
   behavior is investigated further.
 
 ---
+
+## Experiment 9 — Graph RAG (Neo4j entity graph) vs naive/agentic on multi-hop questions
+
+**Question:** Does augmenting single-shot vector retrieval with entity-graph
+traversal (Neo4j) close the multi-hop gap naive RAG has (Experiment 7),
+without paying agentic's iterative-loop cost/latency premium?
+
+**Setup:** Corpus ingested into Neo4j via `scripts/ingest_graph.py`
+(recursive chunking, 500/50, same as the Qdrant pipeline): 138 chunks / 8
+documents, with per-chunk LLM entity/relation extraction producing 1,734
+`Entity` nodes, 2,131 `MENTIONS` edges, and 1,459 `RELATED_TO` edges between
+entities. Compared against the same 7 `multi_doc_synthesis` questions used
+in Experiment 7, via `scripts/run_graph_comparison_eval.py`, which re-runs
+naive and agentic alongside graph so all three are scored on identical
+questions in the same pass. Same embedding model, generation model
+(GPT-4o-mini), and RAGAS judge as every other experiment. Retrieval
+function under test: `retrieve_graph()` in `app/graph/graph_searcher.py`.
+Raw results: `eval/results/naive_rag_multihop.json`,
+`agentic_rag_multihop.json`, `graph_rag_multihop.json`.
+
+**Baseline finding — the graph traversal never ran.** First pass:
+
+| Metric             | Naive   | Agentic | Graph   | Δ Graph vs Naive |
+|---------------------|---------|---------|---------|-------------------|
+| faithfulness         | 0.6059  | 0.8694  | 0.7429  | +0.1369           |
+| answer_relevancy     | 0.4947  | 0.6117  | 0.4933  | -0.0014           |
+| context_precision    | 0.8786  | 0.8825  | 0.8627  | -0.0159           |
+| context_recall       | 0.8690  | 0.8214  | 0.7262  | -0.1429           |
+| avg cost/query       | $0.00050| $0.00137| $0.00050| +$0.00000         |
+| p50 latency          | 2929ms  | 4798ms  | 2457ms  | -472ms            |
+
+Graph trailed naive on 3 of 4 quality metrics despite the corpus having a
+well-populated graph to traverse. Instrumenting `driver.execute_query` to
+log every Cypher call fired showed why: for a real query, only the vector
+index lookup ever executed — the `MENTIONS`-based shared-entity expansion
+query never ran, in either `rerank=True` or `rerank=False`, and regardless
+of corpus size above `top_k*3` chunks. Root cause in the original
+`retrieve_graph`: `results = direct_hits.copy()` already had `top_k`
+elements before `needs_expansion = direct_hits and len(results) < top_k`
+was evaluated, so the condition was unreachable whenever the graph held at
+least `top_k*3` chunks (always true here). **"Graph RAG" as measured was
+plain dense vector search over Neo4j + cross-encoder rerank — it never
+touched the entity/relationship data at query time**, and being dense-only
+(no BM25/sparse fusion, unlike naive/agentic's `retrieve_hybrid`) explains
+the precision/recall shortfall against naive.
+
+**Fix 1 — always run 1-hop shared-entity expansion under `rerank=True`,
+ordered by shared-entity count (not just gap-filling).** Confirmed via the
+same instrumentation that the expansion query now fires on every call.
+
+| Metric             | Naive   | Agentic | Graph   | Δ Graph vs Naive |
+|---------------------|---------|---------|---------|-------------------|
+| faithfulness         | 0.6619  | 0.7947  | 0.7706  | +0.1087           |
+| answer_relevancy     | 0.5970  | 0.4933  | 0.4933  | -0.1037           |
+| context_precision    | 0.8635  | 0.8706  | **0.9333** | +0.0698        |
+| context_recall       | 0.8214  | 0.8690  | 0.7738  | -0.0476           |
+| avg cost/query       | $0.00051| $0.00127| $0.00050| -$0.00001         |
+| p50 latency          | 2912ms  | 4819ms  | 2970ms  | +58ms             |
+
+context_precision jumped to the best of all three pipelines (0.9333) and
+faithfulness moved ahead of naive — actually using the graph helped, at
+effectively no added cost/latency (still one retrieval + one rerank call).
+
+**Fix 2 — add a 2-hop pass over `RELATED_TO`** (`seed → mentioned entity →
+RELATED_TO → other entity → chunk mentioning it`), to reach chunks that
+share no entity with the seed but are connected through a documented
+relationship — the 1,459 `RELATED_TO` edges the extractor writes but
+nothing had ever read. Ranked by a plain `count(DISTINCT e2)` of bridging
+entities, same as the 1-hop query.
+
+| Metric             | Naive   | Agentic | Graph   | Δ Graph vs Naive |
+|---------------------|---------|---------|---------|-------------------|
+| faithfulness         | 0.8372  | 0.8753  | 0.7000  | -0.1372           |
+| answer_relevancy     | 0.5832  | 0.4942  | 0.7385  | +0.1553           |
+| context_precision    | 0.8468  | 0.8706  | 0.8706  | +0.0238           |
+| context_recall       | 0.7262  | 0.8214  | 0.6786  | -0.0476           |
+| p50 latency          | 3022ms  | 5554ms  | 4107ms  | +1085ms           |
+
+This regressed faithfulness and recall versus Fix 1 despite adding a real
+mechanism. Diagnosis (querying the raw candidate scores directly, not
+inferred from aggregates): "Transformer" has degree 33 in this corpus, so
+once any seed chunk mentioned it, the 2-hop traversal fanned out through
+dozens of `RELATED_TO` edges to *any* chunk that densely mentions
+entities — a Ragas paper title page scored `related_entities=26`, an
+appendix/reference block scored 24, both far above genuinely relevant
+chunks (4-8). Plain entity-count scoring rewards fan-out through hub
+entities instead of penalizing it, letting off-topic chunks dominate the
+candidate pool the reranker chooses from.
+
+**Fix 3 — inverse-degree weighting on both hops**, replacing
+`count(DISTINCT e)` with `sum(1.0 / degree(e))` — the graph analogue of
+IDF: a hub entity contributes almost nothing per connection, a rare/
+specific entity contributes a lot. Re-checked the same failing query
+directly: the Ragas title-page chunk's weighted score dropped from 26 to
+7.1 (down to parity with genuinely relevant chunks instead of dominating
+them 3-4x over), and it no longer appeared in the final reranked top-5.
+
+| Metric             | Naive   | Agentic | Graph   | Δ Graph vs Naive |
+|---------------------|---------|---------|---------|-------------------|
+| faithfulness         | 0.8277  | 0.9019  | 0.7628  | -0.0649           |
+| answer_relevancy     | 0.5916  | 0.4933  | **0.7451** | +0.1534        |
+| context_precision    | 0.8944  | 0.8706  | 0.8468  | -0.0476           |
+| context_recall       | 0.7262  | 0.8690  | 0.7738  | +0.0476           |
+| avg cost/query       | $0.00051| $0.00124| $0.00052| +$0.00001         |
+| p50 latency          | 3175ms  | 5629ms  | 4615ms  | +1440ms           |
+| p95 latency          | 7834ms  | 11620ms | 5317ms  | -2517ms           |
+
+Both faithfulness and context_recall recovered from the Fix 2 regression
+(0.70→0.76, 0.68→0.77) once the hub-entity noise stopped drowning out
+on-topic candidates, confirming the diagnosis. Latency crept up further
+(2970ms → 4615ms p50 versus Fix 1) — the `COUNT{}` subquery per bridging
+entity is genuine added Neo4j compute on top of the extra 2-hop
+round-trip, not noise.
+
+**Finding:** Fixing the dead 1-hop code (Fix 1) was the single largest
+win and was free — same cost/latency as doing nothing, but actually using
+the graph instead of silently falling back to plain vector search. Adding
+2-hop `RELATED_TO` traversal (Fix 2) is a real capability the corpus
+supports, but naively ranking it by raw connection count is actively
+harmful on any corpus with hub entities (a paper whose central topic is
+"Transformer" will have a high-degree "Transformer" node) — it must be
+run through the same kind of frequency-discounting that makes TF-IDF work
+for text, or it degrades quality while looking like it's "doing more."
+With that weighting in place (Fix 3), graph RAG beats naive on
+answer_relevancy (+0.15) and context_recall (+0.05), trails naive
+slightly on faithfulness/precision (within the ±0.05-0.15 run-to-run
+noise band naive's own unchanged numbers showed across these four
+7-question runs), and sits well below agentic's cost ($0.00052 vs
+$0.00124, -58%) and p95 latency (5317ms vs 11620ms, -54%) while trailing
+agentic on faithfulness and recall — consistent with agentic's multiple
+retrieval rounds covering gaps a single retrieval-plus-2-hop-traversal
+pass structurally can't.
+
+**What this means for the pipeline:**
+
+- A knowledge-graph retriever that never fires its graph queries is
+  indistinguishable from a broken retriever in eval numbers alone — it
+  takes call-level instrumentation (not just aggregate metrics) to catch
+  an unreachable code path like Fix 1's, since the pipeline still runs
+  and returns plausible-looking results.
+- Any traversal-ranking signal built from raw entity/edge counts needs a
+  frequency-discounting term before it's trustworthy — hub nodes are the
+  graph equivalent of stopwords, and this corpus is small enough (138
+  chunks) that a single hub entity's fan-out can dominate a whole
+  candidate pool.
+- Graph RAG's current position: a legitimate third option between naive
+  (cheapest, weakest on multi-hop) and agentic (most thorough, most
+  expensive) — roughly agentic-level answer_relevancy and better recall
+  than naive, at closer to naive's cost, with faithfulness the one metric
+  where it still trails both. n=7 throughout; treat single-run deltas
+  under ~0.05 as noise rather than signal, as naive's own unchanged
+  pipeline demonstrated by moving that much between runs on its own.
+
+---
