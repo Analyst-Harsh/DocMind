@@ -693,3 +693,259 @@ pass structurally can't.
   pipeline demonstrated by moving that much between runs on its own.
 
 ---
+
+## Experiment 10 — LLM-as-judge calibration
+
+**Question:** How much can RAGAS's automated scores (used as ground truth
+in Experiments 5–9) actually be trusted, and where specifically do they
+diverge from an independent judgment?
+
+**Setup:** 28 already-scored questions sampled across the four pipeline
+contexts evaluated so far — `baseline` (`ragas_baseline_1.json`, the
+full-corpus run from Experiment 5), `agentic` (`agentic_rag_comparison.json`
++ `agentic_rag_multihop.json`, Experiment 7), `multimodal`
+(`multimodal_comparison.json`, Experiment 8), and `graph`
+(`graph_rag_multihop.json`, Experiment 9) — via
+`scripts/build_judge_calibration_sample.py`. Within each of the 4 groups,
+the 5 most extreme-scoring records plus 2 near-median "control" records
+were selected (7 × 4 = 28), weighting toward the questions most likely to
+reveal judge disagreement rather than a plain random sample.
+
+**Important caveat, stated up front:** the "manual" scoring pass here was
+done by Claude acting as a second, independent LLM judge — reading
+`eval/judge_calibration_blind.json` (question/context/answer/reference with
+RAGAS's scores stripped out) against the written rubric in
+`eval/manual_scoring_rubric.md`, blind to RAGAS's numbers until scoring was
+complete, to avoid anchoring. This measures **inter-judge disagreement
+between two different LLM judges**, not agreement with human ground truth.
+That distinction matters for how much weight the findings below can carry:
+they're useful for surfacing *categorizable, mechanistic* judge behaviors
+(most importantly, ones that independently corroborate a bug already found
+by other means — Experiment 8's KV-table faithfulness issue), but they
+cannot by themselves certify which judge is "right" in an absolute sense.
+
+**Results — disagreement rate (|manual − RAGAS| > 0.2), 28 records / 112
+metric scores:**
+
+| Metric             | n scored | n disagree | rate  |
+|---------------------|----------|------------|-------|
+| faithfulness         | 28       | 9          | 32.1% |
+| answer_relevancy     | 28       | 4          | 14.3% |
+| context_precision    | 28       | 17         | 60.7% |
+| context_recall       | 28       | 4          | 14.3% |
+
+| Pipeline context | n scores | n disagree | rate  |
+|-------------------|----------|------------|-------|
+| agentic           | 28       | 9          | 32.1% |
+| baseline          | 28       | 8          | 28.6% |
+| graph             | 28       | 8          | 28.6% |
+| multimodal        | 28       | 9          | 32.1% |
+
+Overall disagreement rate: 34/112 (30.4%). Disagreement is heavily
+concentrated in `context_precision` and roughly even across pipelines —
+this sample does not show one pipeline's scores as categorically less
+trustworthy than another's.
+
+**Disagreement categories identified:**
+
+1. **Structured-data blindness (faithfulness), reproducing Experiment 8's
+   finding on a fresh sample.** `multimodal_comparison#1` — the single-head
+   ablation answer ("development BLEU score of 24.9 and perplexity of
+   5.29") is a verbatim match to the KV-formatted table row
+   `h: 1 | ... | PPL (dev): 5.29 | BLEU (dev): 24.9`, yet RAGAS scored
+   faithfulness `0.00` against this judge's `1.00`. This is the same
+   mechanism Experiment 8 documented via spot-checking, now caught
+   systematically. It is not universal, though:
+   `multimodal_comparison#3` (65M-parameter answer, equally KV-table-
+   grounded and equally correct) did **not** trigger a faithfulness
+   disagreement — RAGAS scored it in line with this judge. The bug is real
+   but intermittent, consistent with Experiment 8's framing of it as
+   something "not yet well understood," not a hard rule.
+
+2. **Refusal-string faithfulness convention.** Both `agentic_rag_comparison#5`
+   and `multimodal_comparison#6` answered with the corpus's literal
+   `REFUSAL_ANSWER` string, and both scored RAGAS faithfulness `0.00`
+   against this judge's `1.00`. RAGAS's claim-decomposition step appears to
+   treat "I don't have enough information..." as an unsupported claim
+   rather than a claim-free non-answer. This judge's own confidence on
+   this scoring choice is low (`confidence: "low"` in the manual-scores
+   file) — scoring a claim-free answer as vacuously faithful is a
+   defensible convention, but so is RAGAS's, and this exercise can't
+   settle which is "right." What it does establish is a concrete mechanism:
+   **a refusal gets penalized twice** — once on relevancy (correctly, in
+   these two cases — see below) and once on faithfulness via this
+   convention — so refusal-heavy pipelines' aggregate RAGAS scores absorb
+   a larger faithfulness hit than a purely relevancy-based view would
+   suggest.
+
+3. **Wrong refusals on genuinely answerable questions — and RAGAS caught
+   them.** Three records in the sample are cases where the pipeline
+   refused (or gave an incomplete "gaps" answer) on a question the
+   retrieved context could actually answer:
+   `agentic_rag_comparison#5` / `graph_rag_multihop#2` (identical
+   multi-hop question, both pipelines gave the same unwarranted refusal
+   despite context supporting a synthesis — worth noting as a possible
+   hard-question effect rather than a single pipeline's quirk), and
+   `multimodal_comparison#6` (refused a `table_only` question despite the
+   answer being directly in a KV-formatted table, `ctx3`, alongside a
+   plain-prose restatement of the same fact in `ctx0` — this generator-side
+   failure to parse the KV table is the mirror image of Experiment 8's
+   judge-side failure). **None of these three appear in the
+   `answer_relevancy` disagreement list** — RAGAS scored all three low on
+   relevancy, matching this judge's independent low scores. This is a
+   direct test, and disconfirmation, of this project's prior working
+   hypothesis (carried over from the original Day 4 brief) that RAGAS's
+   answer_relevancy over-penalizes honest refusals: on this sample, RAGAS's
+   relevancy scoring of refusals was *not* overly strict — it correctly
+   distinguished a warranted refusal from an unwarranted one wherever this
+   judge could too. (No genuine `not_in_corpus` question happened to be
+   sampled, so the narrower hypothesis about correctly-refused
+   out-of-corpus questions specifically remains untested here.)
+
+4. **Diagram-caption mismatch inflating context_recall.**
+   `multimodal_comparison#9` (anaphora-resolution attention-visualization
+   question) retrieved 4 of 5 chunks describing a *different* attention
+   diagram (a "The Law will never be perfect, but its application..."
+   example) rather than the actual Figure 4 the question asks about, whose
+   caption was present in only one chunk. RAGAS still scored context_recall
+   `1.00` against this judge's `0.15` — plausibly because the reference's
+   target words ("Law", "application") appear verbatim in the *wrong*
+   diagram's caption text, and a recall check based on lexical/semantic
+   overlap with the reference can be fooled by that coincidence without
+   verifying the chunks actually describe the right image. RAGAS also
+   scored faithfulness `0.20` against this judge's `1.00` for an answer
+   that made no false claims and correctly hedged given the (wrong)
+   retrieved captions — a second instance of the refusal/hedge-scoring
+   pattern from category 2, this time on an honest hedge that actually was
+   correct.
+
+5. **Context-precision strictness mismatch — the largest category by
+   volume (17 of 28 records), and on reflection, partly an artifact of
+   this judge's own rubric application rather than a RAGAS defect.** In
+   the large majority of these cases (13 of 15 outside the two corrected
+   below), RAGAS scored context_precision generously (0.75–1.0) for chunks
+   this judge scored much lower (0.2–0.7) on a stricter "does this specific
+   chunk materially support constructing this specific answer" standard —
+   spread fairly evenly across `baseline`, `agentic`, and `graph`. In the
+   remaining 2 cases (`multimodal_comparison#0` and `#4`), the direction
+   reversed: RAGAS scored precision very low (0.25, 0.00) for chunks this
+   judge initially scored as high (1.0, 0.8) on a looser "on-topic for the
+   general subject" standard. Rereading those two more carefully (see the
+   next section) showed RAGAS's stricter, reference-derivability-based
+   reading was the more defensible one — which suggests this judge's own
+   rubric interpretation drifted toward "topically relevant" rather than
+   "actually useful for this specific reference answer," and that drift,
+   not a RAGAS bug, plausibly explains a meaningful share of the 17
+   context_precision disagreements in aggregate.
+
+6. **A genuine RAGAS false negative — perfect faithfulness on an answer
+   with real, wrong, cross-table-conflated numbers.**
+   `multimodal_comparison#5` asked for RAG-Sequence's BLEU-1 score vs
+   BART's on MS-MARCO; the answer states "RAG-Sequence achieves a BLEU-1
+   score of 46.9... BART achieves 70.7." Both numbers *do* appear verbatim
+   somewhere in the retrieved context — but `46.9` is `RAG-Sequence-BM25`'s
+   B-1 column in the Table 6 ablation (a different model variant than the
+   plain "RAG-Sequence" the question asks about), and `70.7` is BART's
+   *trigram-diversity percentage* from Table 5, not a BLEU-1 score at all.
+   RAGAS scored this faithfulness `1.00`; this judge scored it `0.20`. This
+   is the inverse of category 1: rather than the judge failing to credit a
+   *correct* table-grounded claim, here the judge failed to catch an
+   *incorrect* one built by conflating two unrelated table columns — a
+   genuine false negative, and arguably the single most consequential
+   disagreement in this sample, since it means RAGAS's faithfulness score
+   cannot be relied on to catch this specific class of cross-table
+   numeric-conflation hallucination.
+
+7. **Stricter claim decomposition discounting otherwise well-grounded
+   synthesis answers.** `agentic_rag_comparison#2` (FastAPI's two
+   dependencies, fully correct and directly citing context) scored RAGAS
+   faithfulness `0.50` against this judge's `1.00`; `graph_rag_multihop#0`
+   and `#5` (both reasonably-grounded synthesis answers about the
+   RAG/Qdrant relationship and the Transformer's role in RAG) scored
+   `0.43` and `0.44` against `0.90` and `0.85`. Unlike categories 1, 2, and
+   6, none of these answers contain a clear factual error this judge could
+   identify on reread — the most likely explanation is that RAGAS's
+   claim-decomposition step is extracting a descriptive or connective
+   phrase (e.g. "for data validation and settings management") as a
+   separate claim and marking it unsupported even when the overall answer
+   is well-grounded. This is a plausible, defensible scoring behavior, not
+   clearly a bug — it's included for completeness rather than as a
+   confirmed failure mode.
+
+**Where RAGAS was actually right on inspection.** Two records —
+`multimodal_comparison#0` (base-vs-big BLEU comparison) and
+`multimodal_comparison#4` (big-configuration BLEU/perplexity/params) — are
+cases where the retrieval genuinely failed to surface the exact table row
+the reference answer needs (confirmed by rereading all 5 contexts for each
+record; the specific row is absent from both). This judge's first-pass
+context_precision scores (1.0 and 0.8) credited the retrieved chunks for
+being generally on-topic; RAGAS's much lower scores (0.25 and 0.00) turned
+out to better reflect that none of those chunks were actually usable to
+construct the specific reference answer. Both records' `manual_scores`
+entries were corrected in `eval/judge_calibration_manual_scores.json`
+before this write-up, with the correction reasoning left in place rather
+than silently edited — this project's own generator also independently
+hallucinated a composite answer for `#4` by combining figures from three
+different ablation-table rows, so the underlying retrieval-recall failure
+these two records share is real, not a judge artifact.
+
+**Practical implications for this project:**
+
+- Experiment 8's KV-table faithfulness caveat is confirmed to recur
+  (`multimodal_comparison#1`) but is intermittent (`multimodal_comparison#3`
+  didn't trigger it) — spot-check faithfulness on table/KV-grounded answers
+  before treating a faithfulness delta as meaningful, but don't assume
+  every table-grounded answer is mis-scored.
+- The working hypothesis that RAGAS's answer_relevancy over-penalizes
+  honest refusals was **not** confirmed on this sample — where a pipeline
+  refused or hedged, RAGAS's relevancy score agreed with this judge's on
+  whether that refusal was warranted. Experiment 7's agentic
+  answer_relevancy numbers do not need to be revisited on refusal-penalty
+  grounds on the evidence gathered here.
+- RAGAS's faithfulness score missed a real cross-table numeric-conflation
+  hallucination (`multimodal_comparison#5`, category 6) — this is a false
+  negative, not just noise, and means a high RAGAS faithfulness score on a
+  table-heavy answer should not be taken as proof the cited numbers are
+  correctly attributed, only that *some* matching numbers exist somewhere
+  in context. This is the most actionable finding for future multimodal
+  work: numeric answers drawing on more than one table column need a
+  spot-check regardless of their faithfulness score.
+- Refusals are penalized twice in RAGAS's aggregate score — once (usually
+  correctly) on relevancy, and separately on faithfulness via the
+  claim-free-answer convention in category 2. Pipelines that refuse more
+  often (agentic's cap-reached partial answers, in particular) will show a
+  compounded faithfulness+relevancy hit from a single underlying event,
+  not two independent signals — worth remembering when comparing
+  aggregate scores across pipelines with different refusal rates.
+- `context_precision` is the metric this exercise trusts least in absolute
+  terms: the disagreement rate (60.7%) is driven mostly by this judge's own
+  inconsistent rubric application (topical relevance vs. reference-answer
+  usefulness) rather than a demonstrated RAGAS flaw, so cross-pipeline
+  `context_precision` *deltas* in Experiments 7–9 are still usable
+  directionally, but the absolute numbers should not be over-interpreted.
+- Aggregate RAGAS scores remain directionally reliable for the
+  large, already-reported deltas in this project (the multimodal
+  vision-captioning win, the agentic context-precision gain, the graph
+  fan-out fix) — this calibration exercise did not surface anything that
+  overturns those findings — but fine-grained (<0.1) differences,
+  especially on faithfulness or context_precision, should not be treated
+  as signal without a manual spot-check.
+
+**Answer to "how do you trust an LLM-as-judge eval":** this calibration
+pass — itself an LLM judge checked against another LLM judge, not against
+human labels — found one clearly reproducible, previously-documented bug
+(structured-data blindness), one previously-undocumented but mechanistic
+scoring convention (refusal strings scoring faithfulness `0.0`), one
+clean disconfirmation of a standing hypothesis (refusal answer_relevancy
+was not over-penalized here), one multimodal-specific recall-inflation
+case traceable to a wrong-image retrieval, and one large but largely
+self-inflicted disagreement category (context_precision) that shrank
+under closer scrutiny rather than surviving it. That mix — bugs
+confirmed, a hypothesis disconfirmed, and a large "disagreement" that
+turned out to be mostly the second judge's own miscalibration — is what
+makes this a calibration result rather than a verdict: RAGAS's scores are
+trustworthy enough to rank pipelines and catch large deltas, specific
+enough categories of failure are worth a standing spot-check habit, and
+the exercise of checking a judge against another judge surfaces real
+mechanisms without being able to declare either one "correct" in an
+absolute sense.
