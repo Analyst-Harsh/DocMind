@@ -20,6 +20,7 @@ from ragas.metrics.collections import (
     ContextRecall,
     Faithfulness,
 )
+from structlog import get_logger
 
 from app.config import get_settings
 from app.eval.ragas_dataset import RagasItem
@@ -27,6 +28,7 @@ from app.generation.generator import generate_answer
 from app.ingestion.indexer import collection_name_for
 from app.retrieval.searcher import retrieve_reranked
 
+log = get_logger(__name__)
 settings = get_settings()
 
 # Mirrors main.py's hybrid retrieval config -- hybrid+rerank is currently
@@ -34,6 +36,14 @@ settings = get_settings()
 # --hybrid).
 HYBRID_STRATEGY = "recursive"
 HYBRID_MODEL = "text-embedding-3-small"
+
+# ragas.llms.llm_factory auto-infers max_tokens for a metric's structured-
+# output call from the response schema, not from the input answer length -
+# a claim-dense answer (many distinct statements for Faithfulness to judge)
+# can overflow that inferred budget and raise IncompleteOutputException even
+# after truncating the answer text. Setting an explicit ceiling here removes
+# that failure mode for all but pathological cases.
+SCORING_MAX_TOKENS = 4096
 
 
 @dataclass
@@ -87,7 +97,9 @@ class RagasMetrics:
 
 def build_metrics() -> RagasMetrics:
     client = AsyncOpenAI()
-    llm: InstructorBaseRagasLLM = llm_factory(settings.llm_model, client=client)
+    llm: InstructorBaseRagasLLM = llm_factory(
+        settings.llm_model, client=client, max_tokens=SCORING_MAX_TOKENS
+    )
     embeddings: BaseRagasEmbedding = embedding_factory(
         "openai", model=settings.embedding_model, client=client
     )
@@ -99,38 +111,60 @@ def build_metrics() -> RagasMetrics:
     )
 
 
+METRIC_NAMES = [
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+]
+
+
 async def _score_one(result: PipelineResult, metrics: RagasMetrics) -> dict:
-    (
-        faithfulness,
-        answer_relevancy,
-        context_precision,
-        context_recall,
-    ) = await asyncio.gather(
-        metrics.faithfulness.ascore(
+    """
+    Scores one question against all four metrics concurrently. A metric
+    that raises - e.g. instructor's IncompleteOutputException, which fires
+    when a claim-dense answer decomposes into more statements than the
+    library's auto-inferred max_tokens budget allows - is recorded as None
+    for that metric rather than propagating. One bad question must not
+    take down every other question's already-computed scores.
+    """
+    metric_calls = {
+        "faithfulness": metrics.faithfulness.ascore(
             user_input=result.question,
             response=result.answer,
             retrieved_contexts=result.contexts,
         ),
-        metrics.answer_relevancy.ascore(
+        "answer_relevancy": metrics.answer_relevancy.ascore(
             user_input=result.question, response=result.answer
         ),
-        metrics.context_precision.ascore(
+        "context_precision": metrics.context_precision.ascore(
             user_input=result.question,
             reference=result.reference,
             retrieved_contexts=result.contexts,
         ),
-        metrics.context_recall.ascore(
+        "context_recall": metrics.context_recall.ascore(
             user_input=result.question,
             retrieved_contexts=result.contexts,
             reference=result.reference,
         ),
-    )
-    return {
-        "faithfulness": faithfulness.value,
-        "answer_relevancy": answer_relevancy.value,
-        "context_precision": context_precision.value,
-        "context_recall": context_recall.value,
     }
+    outcomes = await asyncio.gather(
+        *metric_calls.values(), return_exceptions=True
+    )
+
+    scores: dict[str, float | None] = {}
+    for name, outcome in zip(metric_calls.keys(), outcomes, strict=True):
+        if isinstance(outcome, BaseException):
+            log.warning(
+                "ragas_metric_failed",
+                metric=name,
+                question=result.question[:80],
+                error=str(outcome),
+            )
+            scores[name] = None
+        else:
+            scores[name] = outcome.value
+    return scores
 
 
 async def _score_all_async(
@@ -149,7 +183,19 @@ async def _score_all_async(
 
     async def _bounded(result: PipelineResult) -> dict:
         async with semaphore:
-            return await _score_one(result, metrics)
+            try:
+                return await _score_one(result, metrics)
+            except Exception as exc:
+                # Last-resort guard for failures outside the per-metric
+                # gather in _score_one (e.g. a bug in scoring setup) - keeps
+                # this question's slot in the batch instead of losing every
+                # other question's scores to one unhandled exception.
+                log.warning(
+                    "ragas_scoring_failed",
+                    question=result.question[:80],
+                    error=str(exc),
+                )
+                return dict.fromkeys(METRIC_NAMES)
 
     return await asyncio.gather(*(_bounded(r) for r in results))
 
