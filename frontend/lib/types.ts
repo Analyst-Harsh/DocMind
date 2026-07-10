@@ -48,6 +48,23 @@ export class ApiError extends Error {
 
 export type ConnectionStatus = "connected" | "disconnected" | "checking";
 
+export type DocumentType = "pdf" | "markdown";
+
+export interface DocumentSummary {
+  doc_id: string;
+  title: string;
+  type: DocumentType;
+  tags: string[];
+  chunk_count: number;
+}
+
+export interface UploadDocumentResponse {
+  doc_id: string;
+  title: string;
+  type: DocumentType;
+  chunk_count: number;
+}
+
 export interface StreamMetadata {
   sources: Source[];
   cost_usd: number;

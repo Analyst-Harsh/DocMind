@@ -1,14 +1,29 @@
 import { cn, formatCost, formatLatency, formatTraceId } from "@/lib/utils";
 import { CONFIG } from "@/lib/config";
 import { Separator } from "@/components/ui/separator";
-import type { QueryMeta } from "@/lib/types";
+import { DocumentList } from "@/components/documents/DocumentList";
+import { DocumentUpload } from "@/components/documents/DocumentUpload";
+import type { DocumentSummary, QueryMeta } from "@/lib/types";
 
 interface SidebarProps {
   lastQueryMeta: QueryMeta | null;
   isOpen: boolean;
+  documents: DocumentSummary[];
+  isLoadingDocuments: boolean;
+  isUploading: boolean;
+  uploadError: string | null;
+  onUpload: (file: File) => void;
 }
 
-export function Sidebar({ lastQueryMeta, isOpen }: SidebarProps) {
+export function Sidebar({
+  lastQueryMeta,
+  isOpen,
+  documents,
+  isLoadingDocuments,
+  isUploading,
+  uploadError,
+  onUpload,
+}: SidebarProps) {
   return (
     <aside
       className={cn(
@@ -54,6 +69,19 @@ export function Sidebar({ lastQueryMeta, isOpen }: SidebarProps) {
             </div>
           </>
         )}
+
+        <Separator />
+        <div className="flex flex-col gap-3">
+          <p className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider whitespace-nowrap">
+            {CONFIG.documents.sectionHeading}
+          </p>
+          <DocumentUpload
+            onUpload={onUpload}
+            isUploading={isUploading}
+            error={uploadError}
+          />
+          <DocumentList documents={documents} isLoading={isLoadingDocuments} />
+        </div>
       </div>
     </aside>
   );

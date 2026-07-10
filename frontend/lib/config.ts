@@ -4,6 +4,16 @@ export const CONFIG = {
     timeoutMs: 30_000,
     healthPollIntervalMs: 30_000,
   },
+  documents: {
+    acceptedExtensions: [".pdf", ".md"],
+    acceptAttr: ".pdf,.md",
+    maxFileSizeMb: 20,
+    uploadTimeoutMs: 120_000,
+    uploadingLabel: "Ingesting document… this can take a few seconds",
+    dropzoneLabel: "Drop a PDF or Markdown file here, or click to browse",
+    emptyStateText: "No documents yet.",
+    sectionHeading: "Documents",
+  },
   input: {
     maxChars: 1000,
     charCountWarningThreshold: 500,

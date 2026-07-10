@@ -1,6 +1,12 @@
 import axios, { type AxiosInstance } from "axios";
 import { CONFIG } from "./config";
-import { ApiError, type QueryResponse, type StreamMetadata } from "./types";
+import {
+  ApiError,
+  type DocumentSummary,
+  type QueryResponse,
+  type StreamMetadata,
+  type UploadDocumentResponse,
+} from "./types";
 
 const client: AxiosInstance = axios.create({
   baseURL: "/api",
@@ -13,6 +19,37 @@ client.interceptors.response.use(
   (res) => res,
   (err) => Promise.reject(err),
 );
+
+// Separate instance with no default Content-Type: axios's default
+// transformRequest JSON-stringifies FormData bodies when a
+// "application/json" Content-Type is already set, which would corrupt
+// a file upload. Leaving it unset lets the browser add the correct
+// multipart/form-data boundary itself.
+const uploadClient: AxiosInstance = axios.create({
+  baseURL: "/api",
+  timeout: CONFIG.documents.uploadTimeoutMs,
+});
+
+function toApiError(err: unknown): ApiError {
+  if (axios.isAxiosError(err)) {
+    if (err.code === "ECONNABORTED") {
+      return new ApiError(
+        "Request timed out",
+        `No response after ${CONFIG.api.timeoutMs / 1000}s`,
+      );
+    }
+    if (err.code === "ERR_CANCELED") {
+      return new ApiError("Request cancelled");
+    }
+    const detail = (err.response?.data as { detail?: string } | undefined)
+      ?.detail;
+    return new ApiError(
+      `HTTP ${err.response?.status ?? "error"}`,
+      detail ?? err.message,
+    );
+  }
+  return new ApiError("Network error. Could not reach the backend.");
+}
 
 export async function queryBackend(
   question: string,
@@ -108,6 +145,38 @@ export async function streamBackend(
         eventData = "";
       }
     }
+  }
+}
+
+export async function listDocuments(
+  signal?: AbortSignal,
+): Promise<DocumentSummary[]> {
+  try {
+    const { data } = await client.get<{ documents: DocumentSummary[] }>(
+      "/documents",
+      { signal },
+    );
+    return data.documents;
+  } catch (err) {
+    throw toApiError(err);
+  }
+}
+
+export async function uploadDocument(
+  file: File,
+  signal?: AbortSignal,
+): Promise<UploadDocumentResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const { data } = await uploadClient.post<UploadDocumentResponse>(
+      "/documents/upload",
+      formData,
+      { signal },
+    );
+    return data;
+  } catch (err) {
+    throw toApiError(err);
   }
 }
 
