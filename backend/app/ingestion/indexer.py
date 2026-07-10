@@ -18,6 +18,13 @@ from app.ingestion.chunker import Chunk
 log = get_logger(__name__)
 settings = get_settings()
 
+# Hybrid (dense+BM25) retrieval is currently only ingested for this
+# strategy/model combo (see scripts/ingest.py --hybrid). main.py's /query
+# and app/documents' upload path both key off these so they can never
+# search/ingest into different collections.
+HYBRID_STRATEGY = "recursive"
+HYBRID_MODEL = "text-embedding-3-small"
+
 
 def get_qdrant_client() -> QdrantClient:
     return QdrantClient(

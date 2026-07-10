@@ -38,7 +38,7 @@ def resolve_targets(strategy: str) -> list[str]:
 
 def ingest_strategy(
     strategy: str, docs, client: QdrantClient, model: str, hybrid: bool = False
-) -> None:
+) -> int:
     print(f"\n=== Ingesting strategy: {strategy} (model: {model}) ===")
     chunker = get_chunker(
         ChunkStrategy(strategy), chunk_size=500, chunk_overlap=50
@@ -72,6 +72,8 @@ def ingest_strategy(
         upsert_chunks(client, collection, chunk_embeddings)
         info = client.get_collection(collection)
         print(f"  {collection}: {info.points_count} points")
+
+    return len(chunks)
 
 
 def main() -> None:

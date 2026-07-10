@@ -9,21 +9,22 @@ from app.agent.router import router as agent_router
 from app.caching.cache import get_semantic_cache
 from app.caching.schema import CachedResponse, CacheLookupResult
 from app.config import get_settings
+from app.documents.router import router as documents_router
 from app.generation.generator import generate_answer
 from app.ingestion.embedder import embed_query
-from app.ingestion.indexer import collection_name_for
+from app.ingestion.indexer import (
+    HYBRID_MODEL,
+    HYBRID_STRATEGY,
+    collection_name_for,
+)
 from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
 from app.streaming.pipeline import stream_query_pipeline
 from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
 
 app = FastAPI(title="DocMind", version="0.1.0")
 app.include_router(agent_router)
+app.include_router(documents_router)
 settings = get_settings()
-
-# Hybrid (dense+BM25) retrieval is currently only ingested for this
-# strategy/model combo (see scripts/ingest.py --hybrid).
-HYBRID_STRATEGY = "recursive"
-HYBRID_MODEL = "text-embedding-3-small"
 
 
 class QueryRequest(BaseModel):
