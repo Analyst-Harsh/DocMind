@@ -9,7 +9,6 @@ std::bad_alloc from Docling when batching all pages simultaneously.
 """
 
 import base64
-import logging
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path

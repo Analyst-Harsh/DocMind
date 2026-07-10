@@ -156,11 +156,11 @@ def print_corpus_stats() -> None:
             total_size += path.stat().st_size
             total_files += 1
 
-    print(f"\n── Corpus stats ──────────────────────────")
+    print("\n── Corpus stats ──────────────────────────")
     print(f"  Files: {total_files}")
     print(f"  Total size: {total_size / 1024 / 1024:.1f} MB")
     print(f"  Location: {CORPUS_DIR}")
-    print(f"───────────────────────────────────────────")
+    print("───────────────────────────────────────────")
 
 
 def main() -> None:

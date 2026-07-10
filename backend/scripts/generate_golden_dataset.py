@@ -18,16 +18,15 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
+from openai import OpenAI
+from structlog import get_logger
 
 load_dotenv()
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from openai import OpenAI
-
-from app.config import get_settings
-from app.eval.golden_dataset import load_corpus_texts
-from app.eval.matcher import normalize
-from structlog import get_logger
+from app.config import get_settings  # noqa: E402
+from app.eval.golden_dataset import load_corpus_texts  # noqa: E402
+from app.eval.matcher import normalize  # noqa: E402
 
 log = get_logger()
 client = OpenAI()
@@ -74,7 +73,7 @@ def partition_validated(
 
 
 def to_yaml(valid: list[RawPair], needs_review: list[RawPair]) -> str:
-    grouped: "OrderedDict[str, list[RawPair]]" = OrderedDict()
+    grouped: OrderedDict[str, list[RawPair]] = OrderedDict()
     for p in valid:
         grouped.setdefault(p.query, []).append(p)
 

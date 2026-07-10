@@ -1,8 +1,8 @@
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
-import yaml
 import fitz  # PyMuPDF
+import yaml
 
 CORPUS_DIR = Path(__file__).parent.parent.parent / "corpus"
 

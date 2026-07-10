@@ -1,8 +1,9 @@
 import ast
+import re
+
+from app.ingestion.loader import Document
 
 from .base_chunker import DEFAULT_SEPARATORS, BaseChunker, Chunk, ChunkStrategy
-from app.ingestion.loader import Document
-import re
 
 
 class StructureAwareChunker(BaseChunker):
@@ -97,6 +98,9 @@ class StructureAwareChunker(BaseChunker):
                 if preamble:
                     sections.append(preamble)
 
+            # ast.parse (not compile()) always sets end_lineno on these node
+            # types, so this is never actually None.
+            assert node.end_lineno is not None
             section_text = "".join(lines[node_start : node.end_lineno])
             sections.append(section_text)
             cursor = node.end_lineno

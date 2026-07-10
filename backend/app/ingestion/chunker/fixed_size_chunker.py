@@ -1,6 +1,6 @@
 from app.ingestion.loader import Document
 
-from .base_chunker import BaseChunker, Chunk, ChunkStrategy, DEFAULT_SEPARATORS
+from .base_chunker import BaseChunker, Chunk, ChunkStrategy
 
 
 class FixedSizeChunker(BaseChunker):

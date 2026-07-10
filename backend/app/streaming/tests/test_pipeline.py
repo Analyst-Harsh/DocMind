@@ -38,17 +38,17 @@ def _call_pipeline(**overrides):
     """Call stream_query_pipeline with safe defaults, collect all events."""
     from app.streaming.pipeline import stream_query_pipeline
 
-    defaults = dict(
-        question="What is RAG?",
-        chunks=[],
-        cache_hit=None,
-        trace_id="test-trace-abc",
-        start_time=0.0,
-        query_vector=[0.0] * 1536,
-        sources=SOURCES,
-        resolved_model="text-embedding-3-small",
-        retrieval_mode="hybrid_rerank",
-    )
+    defaults = {
+        "question": "What is RAG?",
+        "chunks": [],
+        "cache_hit": None,
+        "trace_id": "test-trace-abc",
+        "start_time": 0.0,
+        "query_vector": [0.0] * 1536,
+        "sources": SOURCES,
+        "resolved_model": "text-embedding-3-small",
+        "retrieval_mode": "hybrid_rerank",
+    }
     defaults.update(overrides)
     return list(stream_query_pipeline(**defaults))
 

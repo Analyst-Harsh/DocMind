@@ -1,4 +1,3 @@
-import pytest
 from app.generation.prompts import get_registry
 from app.retrieval.searcher import RetrievedChunk
 

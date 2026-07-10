@@ -42,6 +42,10 @@ pythonpath = ["."]
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = "fitz.*"
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 80
 target-version = "py313"

@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.agent.state import AgentLoopState, SufficiencyResult
+from app.agent.state import SufficiencyResult
 from app.retrieval.searcher import RetrievedChunk
 
 

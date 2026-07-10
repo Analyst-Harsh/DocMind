@@ -100,9 +100,13 @@ def build_metrics() -> RagasMetrics:
     llm: InstructorBaseRagasLLM = llm_factory(
         settings.llm_model, client=client, max_tokens=SCORING_MAX_TOKENS
     )
-    embeddings: BaseRagasEmbedding = embedding_factory(
+    embeddings = embedding_factory(
         "openai", model=settings.embedding_model, client=client
     )
+    # embedding_factory's return type is a union of the legacy
+    # (BaseRagasEmbeddings) and modern client-based (BaseRagasEmbedding)
+    # interfaces; the "openai" provider always returns the modern one.
+    assert isinstance(embeddings, BaseRagasEmbedding)
     return RagasMetrics(
         faithfulness=Faithfulness(llm=llm),
         answer_relevancy=AnswerRelevancy(llm=llm, embeddings=embeddings),

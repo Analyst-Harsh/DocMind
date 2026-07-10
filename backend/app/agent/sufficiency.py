@@ -51,6 +51,8 @@ def assess_sufficiency(
             ) from exc
 
         usage = response.usage
+        if usage is None:
+            raise RuntimeError("OpenAI response missing usage in sufficiency assessment")
         cost = (
             usage.prompt_tokens * COST_PER_INPUT_TOKEN
             + usage.completion_tokens * COST_PER_OUTPUT_TOKEN

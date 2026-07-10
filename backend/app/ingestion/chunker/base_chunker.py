@@ -121,7 +121,9 @@ class BaseChunker(ABC):
         Carries trailing pieces forward into the next chunk to create
         overlap, without re-splitting any individual piece.
         """
-        merged, current, current_tokens = [], [], 0
+        merged: list[str] = []
+        current: list[str] = []
+        current_tokens = 0
 
         for piece in pieces:
             piece_tokens = len(self.encoder.encode(piece))
@@ -129,7 +131,8 @@ class BaseChunker(ABC):
             if current_tokens + piece_tokens > self.chunk_size and current:
                 merged.append("\n\n".join(current))
                 # carry trailing pieces forward as overlap
-                overlap, overlap_tokens = [], 0
+                overlap: list[str] = []
+                overlap_tokens = 0
                 for p in reversed(current):
                     p_tokens = len(self.encoder.encode(p))
                     if overlap_tokens + p_tokens > self.chunk_overlap:

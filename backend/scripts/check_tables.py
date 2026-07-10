@@ -126,7 +126,7 @@ def main() -> None:
         return
 
     print(f"Corpus : {CORPUS_DIR}")
-    print(f"Engine : Docling TableFormer, page-by-page (images_scale=0.5)\n")
+    print("Engine : Docling TableFormer, page-by-page (images_scale=0.5)\n")
 
     all_results = []
     for pdf_path in targets:

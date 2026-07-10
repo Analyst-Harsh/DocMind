@@ -179,10 +179,10 @@ def _aggregate(
     agg = {m: sum(r[m] for r in records) / len(records) for m in METRICS}
     agg["avg_cost_usd"] = sum(costs) / len(costs)
     agg["p50_latency_ms"] = round(
-        _percentile([float(l) for l in latencies], 50)
+        _percentile([float(lat) for lat in latencies], 50)
     )
     agg["p95_latency_ms"] = round(
-        _percentile([float(l) for l in latencies], 95)
+        _percentile([float(lat) for lat in latencies], 95)
     )
     return agg
 

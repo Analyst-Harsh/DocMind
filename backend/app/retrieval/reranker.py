@@ -42,7 +42,10 @@ def rerank(
     ) as span:
         model = _load_reranker_model()
         pairs = [(query, chunk.text) for chunk in chunks]
-        scores = model.predict(pairs)
+        # sentence-transformers' stub types predict() against its generic
+        # multimodal (text/image/audio/video) input union; we only ever
+        # pass plain (str, str) pairs, which the stub can't narrow to.
+        scores = model.predict(pairs)  # type: ignore[arg-type]
 
         rescored = [
             replace(chunk, score=float(score))
