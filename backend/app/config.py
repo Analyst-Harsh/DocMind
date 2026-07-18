@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     github_token: str | None = None
     ingest_job_ttl_seconds: int = 604800  # 7 days
 
+    # MCP server settings
+    mcp_ingest_max_concurrency: int = 2
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )

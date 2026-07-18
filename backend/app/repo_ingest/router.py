@@ -1,18 +1,18 @@
 # app/repo_ingest/router.py
-import re
-import uuid
-from collections.abc import Callable
-
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from app.repo_ingest import github
 from app.repo_ingest.job_store import IngestJob, get_job_store
-from app.repo_ingest.service import run_full_ingest, run_incremental_ingest
+from app.repo_ingest.service import (
+    InvalidRepoFormatError,
+    RepoLockedError,
+    prepare_ingest_job,
+    run_full_ingest,
+    run_incremental_ingest,
+)
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
-
-REPO_PATTERN = re.compile(r"^[\w.-]+/[\w.-]+$")
 
 
 class IngestRepoRequest(BaseModel):
@@ -69,52 +69,32 @@ def _accept_ingest_job(
     request: IngestRepoRequest,
     background_tasks: BackgroundTasks,
     job_type: str,
-    task_fn: Callable[[str, str, str, str], None],
+    task_fn,
 ) -> IngestJobAccepted:
     """
-    Shared request handling for /ingest/repo and /ingest/files: validate
-    repo format, resolve ref -> commit SHA, acquire the per-repo lock,
-    create the job record, and schedule task_fn as the BackgroundTasks
-    target. job_type only labels the job record -- task_fn (run_full_ingest
-    or run_incremental_ingest) is what actually decides how the work runs.
+    FastAPI-specific wrapper around prepare_ingest_job: maps its domain
+    exceptions to HTTPException, then schedules task_fn (run_full_ingest or
+    run_incremental_ingest) via BackgroundTasks -- the one part that's
+    specific to this transport and can't live in the shared service-layer
+    function.
     """
-    if not REPO_PATTERN.match(request.repo):
-        raise HTTPException(
-            status_code=400, detail="repo must be in 'owner/name' form"
-        )
-
     try:
-        resolved_ref, commit_sha = github.resolve_commit_sha(
-            request.repo, request.ref
+        job = prepare_ingest_job(
+            request.repo, request.ref, job_type, get_job_store
         )
+    except InvalidRepoFormatError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except github.GithubNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except github.GithubAuthError as e:
         raise HTTPException(status_code=401, detail=str(e)) from e
     except github.GithubRateLimitedError as e:
         raise HTTPException(status_code=429, detail=str(e)) from e
+    except RepoLockedError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
-    job_store = get_job_store()
-
-    # Mint the job id before creating the record, so a lock conflict never
-    # leaves an orphan job that nothing will ever run (see
-    # JobStore.create_job's job_id docstring).
-    job_id = uuid.uuid4().hex
-    holder = job_store.acquire_repo_lock(request.repo, job_id)
-    if holder is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"An ingest is already running for {request.repo!r} "
-                f"(job_id={holder!r})"
-            ),
-        )
-
-    job = job_store.create_job(
-        job_type, request.repo, resolved_ref, commit_sha, job_id=job_id
-    )
     background_tasks.add_task(
-        task_fn, job.job_id, request.repo, resolved_ref, commit_sha
+        task_fn, job.job_id, request.repo, job.ref, job.commit_sha
     )
 
     return IngestJobAccepted(

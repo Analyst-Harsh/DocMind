@@ -3,9 +3,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.ingestion.loader import Document
+from app.repo_ingest import github
 from app.repo_ingest.github import COMPARE_FILES_CAP, ChangedFile, CompareResult
 from app.repo_ingest.job_store import JobStore
 from app.repo_ingest.service import (
+    InvalidRepoFormatError,
+    RepoLockedError,
+    prepare_ingest_job,
     repo_collection_name,
     run_full_ingest,
     run_incremental_ingest,
@@ -20,6 +24,79 @@ def test_repo_collection_name_sanitizes_slash_and_lowercases():
 @pytest.fixture
 def store(fake_redis) -> JobStore:
     return JobStore(client=fake_redis, job_ttl_seconds=3600)
+
+
+def test_prepare_ingest_job_rejects_malformed_repo(store):
+    factory = MagicMock(return_value=store)
+
+    with pytest.raises(InvalidRepoFormatError):
+        prepare_ingest_job("not-a-valid-repo", None, "full", factory)
+
+    # the format check must run before the job store is ever constructed
+    factory.assert_not_called()
+
+
+@patch("app.repo_ingest.service.github")
+def test_prepare_ingest_job_propagates_github_not_found(mock_github, store):
+    mock_github.resolve_commit_sha.side_effect = github.GithubNotFoundError("nope")
+
+    with pytest.raises(github.GithubNotFoundError):
+        prepare_ingest_job(
+            "octo/hello", None, "full", MagicMock(return_value=store)
+        )
+
+
+@patch("app.repo_ingest.service.github")
+def test_prepare_ingest_job_propagates_github_auth_error(mock_github, store):
+    mock_github.resolve_commit_sha.side_effect = github.GithubAuthError("nope")
+
+    with pytest.raises(github.GithubAuthError):
+        prepare_ingest_job(
+            "octo/hello", None, "full", MagicMock(return_value=store)
+        )
+
+
+@patch("app.repo_ingest.service.github")
+def test_prepare_ingest_job_propagates_github_rate_limited(mock_github, store):
+    mock_github.resolve_commit_sha.side_effect = github.GithubRateLimitedError(
+        "nope"
+    )
+
+    with pytest.raises(github.GithubRateLimitedError):
+        prepare_ingest_job(
+            "octo/hello", None, "full", MagicMock(return_value=store)
+        )
+
+
+@patch("app.repo_ingest.service.github")
+def test_prepare_ingest_job_raises_repo_locked_when_lock_held(mock_github, store):
+    mock_github.resolve_commit_sha.return_value = ("main", "abc123")
+    store.acquire_repo_lock("octo/hello", "other-job-id")
+
+    with pytest.raises(RepoLockedError) as exc_info:
+        prepare_ingest_job(
+            "octo/hello", None, "full", MagicMock(return_value=store)
+        )
+
+    assert exc_info.value.repo == "octo/hello"
+    assert exc_info.value.holder_job_id == "other-job-id"
+
+
+@patch("app.repo_ingest.service.github")
+def test_prepare_ingest_job_happy_path(mock_github, store):
+    mock_github.resolve_commit_sha.return_value = ("main", "abc123")
+
+    job = prepare_ingest_job(
+        "octo/hello", None, "full", MagicMock(return_value=store)
+    )
+
+    assert job.repo == "octo/hello"
+    assert job.ref == "main"
+    assert job.commit_sha == "abc123"
+    assert job.status == "pending"
+    assert job.job_type == "full"
+    # the lock is now held under this job's id
+    assert store.acquire_repo_lock("octo/hello", "another-job") == job.job_id
 
 
 @patch("app.repo_ingest.service.get_semantic_cache")
