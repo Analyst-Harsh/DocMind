@@ -55,6 +55,36 @@ def test_markdown_uses_heading_separators(make_doc):
     assert len(chunks) >= 2
 
 
+def test_css_splits_on_closing_brace_boundary(make_doc):
+    chunker = CodeChunker(chunk_size=10, chunk_overlap=0)
+    src = ".one {\n  color: red;\n}\n.two {\n  color: blue;\n}\n"
+    doc = make_doc(src, doc_type="code", language="css")
+    chunks = chunker.chunk_document(doc)
+    assert len(chunks) >= 2
+    joined = "\n".join(c.text for c in chunks)
+    assert ".one" in joined
+    assert ".two" in joined
+
+
+def test_scss_splits_on_closing_brace_boundary(make_doc):
+    chunker = CodeChunker(chunk_size=10, chunk_overlap=0)
+    src = ".a {\n  .nested {\n    color: red;\n  }\n}\n.b {\n  color: blue;\n}\n"
+    doc = make_doc(src, doc_type="code", language="scss")
+    chunks = chunker.chunk_document(doc)
+    assert len(chunks) >= 2
+
+
+def test_html_falls_back_to_blank_line_and_newline_splits(make_doc):
+    chunker = CodeChunker(chunk_size=10, chunk_overlap=0)
+    src = "<div>\n  <p>one</p>\n</div>\n\n<div>\n  <p>two</p>\n</div>\n"
+    doc = make_doc(src, doc_type="code", language="html")
+    chunks = chunker.chunk_document(doc)
+    assert len(chunks) >= 2
+    joined = "\n".join(c.text for c in chunks)
+    assert "one" in joined
+    assert "two" in joined
+
+
 def test_unknown_language_falls_back_to_default_separators(make_doc):
     chunker = CodeChunker(chunk_size=500, chunk_overlap=50)
     doc = make_doc("some plain text", doc_type="code", language="cobol")

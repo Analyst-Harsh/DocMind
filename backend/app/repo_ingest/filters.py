@@ -34,6 +34,10 @@ CODE_EXTENSIONS: dict[str, str] = {
     ".scala": "scala",
     ".sh": "shell",
     ".sql": "sql",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
 }
 
 DOC_EXTENSIONS: dict[str, str] = {
@@ -55,6 +59,29 @@ EXTENSION_LANGUAGE: dict[str, str] = {
     **DOC_EXTENSIONS,
     **CONFIG_EXTENSIONS,
 }
+
+# Well-known filenames that carry no extension -- GitHub convention predates
+# ".md" becoming universal (e.g. octocat/Hello-World's only file is
+# literally named "README", not "README.md"), and Dockerfile/Makefile never
+# had one. Keyed by lowercased basename since GitHub itself treats these
+# case-insensitively. Mirrors DOC_EXTENSIONS/CODE_EXTENSIONS's split so
+# document_for can decide doc_type the same way for both.
+DOC_FILENAMES: dict[str, str] = {
+    "readme": "markdown",
+    "changelog": "markdown",
+    "contributing": "markdown",
+    "license": "text",
+    "licence": "text",
+    "authors": "text",
+    "notice": "text",
+}
+
+CODE_FILENAMES: dict[str, str] = {
+    "dockerfile": "dockerfile",
+    "makefile": "makefile",
+}
+
+FILENAME_LANGUAGE: dict[str, str] = {**DOC_FILENAMES, **CODE_FILENAMES}
 
 # Matched against any path segment, not just the immediate parent, so a
 # nested vendored dir (e.g. "foo/node_modules/bar/baz.js") is still skipped.
@@ -110,7 +137,9 @@ def is_ingestable_path(path: str) -> bool:
         return False
     if p.name in SKIP_FILE_NAMES:
         return False
-    return p.suffix.lower() in EXTENSION_LANGUAGE
+    if p.suffix:
+        return p.suffix.lower() in EXTENSION_LANGUAGE
+    return p.name.lower() in FILENAME_LANGUAGE
 
 
 def iter_ingestable_files(root: Path) -> Iterator[tuple[str, str]]:
@@ -153,8 +182,15 @@ def document_for(path: str, text: str) -> Document:
     itself -- unique within a repo's collection, which is all that's
     needed since each repo gets its own collection.
     """
-    ext = Path(path).suffix.lower()
-    doc_type = "markdown" if ext in MARKDOWN_LIKE_EXTENSIONS else "code"
+    p = Path(path)
+    ext = p.suffix.lower()
+    if ext:
+        language = EXTENSION_LANGUAGE.get(ext)
+        doc_type = "markdown" if ext in MARKDOWN_LIKE_EXTENSIONS else "code"
+    else:
+        name = p.name.lower()
+        language = FILENAME_LANGUAGE.get(name)
+        doc_type = "markdown" if name in DOC_FILENAMES else "code"
     return Document(
         doc_id=path,
         title=path,
@@ -162,5 +198,5 @@ def document_for(path: str, text: str) -> Document:
         doc_type=doc_type,
         source_path=path,
         tags=[],
-        language=EXTENSION_LANGUAGE.get(ext),
+        language=language,
     )

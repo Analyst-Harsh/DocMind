@@ -61,6 +61,13 @@ LANGUAGE_SEPARATORS: dict[str, list[str]] = {
     "text": ["\n\n", "\n", ". ", " "],
     "yaml": ["\n\n", "\n", " "],
     "toml": ["\n\n", "\n", " "],
+    "html": ["\n\n", "\n", " "],
+    # No keyword hierarchy (selectors aren't a fixed vocabulary like
+    # class/def) -- split after a rule's closing brace first, so a rule
+    # stays intact whenever it fits the token budget, before falling back
+    # to blank-line/word splitting.
+    "css": ["\n}\n", "\n\n", "\n", " "],
+    "scss": ["\n}\n", "\n\n", "\n", " "],
 }
 
 
