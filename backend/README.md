@@ -61,6 +61,13 @@ backend/
 │   │   ├── router.py                # GET /documents, POST /documents/upload
 │   │   └── service.py               # save upload, manifest append, ingest-on-upload, cache flush
 │   │
+│   ├── repo_ingest/                # GitHub repo ingestion (per-repo hybrid Qdrant collections)
+│   │   ├── router.py                # POST /ingest/repo, POST /ingest/files, GET /ingest/status/{job_id}
+│   │   ├── service.py               # run_full_ingest / run_incremental_ingest orchestration
+│   │   ├── github.py                # tarball fetch, ref→SHA resolution, compare, file content
+│   │   ├── filters.py               # ingestable-file selection, Document construction
+│   │   └── job_store.py             # Redis-backed job records, per-repo lock, ingest watermark
+│   │
 │   ├── streaming/pipeline.py       # SSE generator for /query/stream (token → done → metadata events)
 │   ├── tracing/                    # Langfuse (v4 OTEL SDK) spans — root/retrieval/generation
 │   └── eval/                       # retrieval + RAGAS evaluation harness
@@ -93,7 +100,9 @@ backend/
 
 **Graph-augmented retrieval** (`app/graph/`) extracts entities/relations from chunks into Neo4j (`Document`/`Chunk`/`Entity` nodes, `MENTIONS`/`RELATED_TO` edges) and retrieves via vector search + entity-graph expansion. **It's fully implemented and evaluated (Experiment 9) but not exposed through the live API** — only invoked from `scripts/eval_graph.py` / `scripts/run_graph_comparison_eval.py`.
 
-**Semantic caching** (`app/caching/`) is a Redis-backed cache keyed by `(embedding_model, retrieval_mode)`, checked via a cosine-similarity scan before retrieval runs and flushed automatically whenever a new document is uploaded (see Experiment 6 for threshold calibration).
+**Semantic caching** (`app/caching/`) is a Redis-backed cache keyed by `(scope, embedding_model, retrieval_mode)` — `scope` is `"docs"` for the fixed corpus or a repo slug for a repo-scoped query, so a cached docs answer can never be served for a repo question or vice versa — checked via a cosine-similarity scan before retrieval runs and flushed automatically whenever a new document or repo is ingested (see Experiment 6 for threshold calibration).
+
+**Repo ingestion** (`app/repo_ingest/`, `POST /ingest/repo` / `POST /ingest/files`) indexes a GitHub repo into its own hybrid Qdrant collection, separate from the fixed docs corpus, so `POST /query`/`POST /query/stream` can pass an optional `repo` field to search it instead. `POST /ingest/repo` downloads the repo tarball pinned to a resolved commit SHA, chunks every ingestable file with a language-aware `CodeChunker` (`app/ingestion/chunker/code_chunker.py` — separator hierarchies keep functions/classes intact per language, e.g. splitting Python on `class`/`def` before falling back to blank lines), embeds, and upserts — then sweeps every point whose `commit_sha` doesn't match the run (mark-and-sweep), so deleted/shrunk files don't linger. `POST /ingest/files` is the incremental counterpart: it diffs against the last successfully ingested commit (tracked as a per-repo "watermark") via GitHub's compare API and applies only the changed files, falling back to a full re-ingest when there's no watermark yet, the history diverged (force-push), or too many files changed. Both run as a FastAPI `BackgroundTasks` job behind a per-repo Redis lock (so concurrent ingests for the same repo 409 instead of racing) and report progress via `GET /ingest/status/{job_id}`. Point IDs are deterministic (`uuid5` of a chunk ID that embeds the file path), so re-ingesting the same repo/commit is idempotent.
 
 **Evaluation** (`app/eval/`, `scripts/eval_*.py`, `scripts/run_*_eval.py`) is not a bolt-on — every retrieval/generation change in this project was measured before being adopted. Retrieval-only eval uses `rapidfuzz` fuzzy string matching against a hand-verified golden set (deliberately *not* an embedding-based judge, to avoid biasing results toward whichever embedding model is under test). End-to-end pipeline eval uses RAGAS (LLM-as-judge) against a 35-question dataset spanning single-doc, multi-doc-synthesis, and deliberately-unanswerable questions.
 
@@ -102,11 +111,14 @@ backend/
 | Method | Path | Router | Description |
 |---|---|---|---|
 | `GET` | `/health` | `main.py` | Liveness check |
-| `POST` | `/query` | `main.py` | Full sync RAG pipeline: embed → cache check → retrieve (dense/hybrid/reranked) → generate → trace |
-| `POST` | `/query/stream` | `main.py` | Same pipeline, server-sent events (`token` → `done` → `metadata`) |
+| `POST` | `/query` | `main.py` | Full sync RAG pipeline: embed → cache check → retrieve (dense/hybrid/reranked) → generate → trace. Optional `repo` field queries a repo ingested via `/ingest/repo` instead of the docs corpus (404 if it hasn't been ingested) |
+| `POST` | `/query/stream` | `main.py` | Same pipeline (incl. optional `repo`), server-sent events (`token` → `done` → `metadata`) |
 | `POST` | `/agent/query` | `app/agent/router.py` | Agentic RAG: iterative retrieve/assess/reformulate loop, up to 3 iterations |
 | `GET` | `/documents` | `app/documents/router.py` | Lists cataloged documents with live chunk counts from Qdrant |
 | `POST` | `/documents/upload` | `app/documents/router.py` | Uploads a `.pdf`/`.md` (max 20MB), ingests it immediately into the live hybrid collection, flushes the semantic cache |
+| `POST` | `/ingest/repo` | `app/repo_ingest/router.py` | `{repo, ref?}` — bulk-ingests a GitHub repo into its own hybrid collection. Returns `202 {job_id, ...}` immediately; runs as a background job |
+| `POST` | `/ingest/files` | `app/repo_ingest/router.py` | Same request/response shape; incrementally re-ingests a repo by diffing against the last ingested commit instead of re-downloading the whole tarball |
+| `GET` | `/ingest/status/{job_id}` | `app/repo_ingest/router.py` | Job status (`pending`/`running`/`completed`/`failed`) plus file/chunk counters |
 
 ## Setup & running
 
@@ -139,12 +151,16 @@ uvicorn main:app --reload                  # serves on :8000
 | `QDRANT_HOST` / `QDRANT_PORT` | no | `localhost` / `6333` | Vector store |
 | `REDIS_HOST` / `REDIS_PORT` | no | `localhost` / `6379` | Semantic cache |
 | `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` | no | `bolt://localhost:7687` / `neo4j` / `password` | GraphRAG (eval scripts only) |
+| `GITHUB_TOKEN` | no | — | Fine-grained PAT for repo ingestion. Without it, only public repos work and the GitHub API is capped at 60 req/hr (vs. 5000/hr authenticated) |
+| `INGEST_JOB_TTL_SECONDS` | no | `604800` (7 days) | How long a repo-ingestion job record stays queryable via `GET /ingest/status/{job_id}` after it finishes |
 
 See [`.env.example`](./.env.example) for a ready-to-copy template. The four "required" variables above have no defaults — the app will fail to start without them.
 
 ## Ingestion & corpus
 
 `corpus/manifest.yaml` is the source of truth for what gets ingested: 3 foundational PDFs (Attention Is All You Need, RAG (Lewis 2020), RAGAS (Es 2023)) plus 5 tool READMEs (FastAPI, Langfuse, Qdrant, RAGAS, tiktoken) used as a markdown corpus, plus whatever has been added via `POST /documents/upload` (lands in `corpus/uploads/`). Adding a document requires both the file on disk and a `manifest.yaml` entry before `scripts/ingest.py` will pick it up. Qdrant collections are named per `(chunking_strategy, embedding_model)` — re-ingesting with a different strategy or model creates a new collection rather than overwriting the existing one, which is what makes side-by-side comparison (Experiments 1–2) possible.
+
+GitHub repos ingested via `POST /ingest/repo` are a separate track from the docs corpus: each repo gets its own hybrid Qdrant collection (`docmind_repo_{owner-name}_{model}_hybrid`), keyed only by the repo slug — no `manifest.yaml` entry needed. The `code` chunking strategy this uses is deliberately excluded from `python -m scripts.ingest --strategy all` (see `scripts/ingest.py`'s `CORPUS_STRATEGIES`), so running the corpus ingest script never touches repo collections or spends embedding budget on them.
 
 ## Scripts (`scripts/`)
 
@@ -166,7 +182,7 @@ pytest app/ingestion/chunker/tests/test_recursive_chunker.py::test_name     # si
 ruff check .                                                                 # lint
 ```
 
-Tests are colocated per module: `app/agent/tests/`, `app/caching/tests/`, `app/ingestion/tests/` + `app/ingestion/chunker/tests/`, `app/retrieval/tests/`, `app/streaming/tests/` (17 test files total). **`app/documents/` and `app/graph/` currently have no tests.**
+Tests are colocated per module: `app/agent/tests/`, `app/caching/tests/`, `app/ingestion/tests/` + `app/ingestion/chunker/tests/`, `app/retrieval/tests/`, `app/streaming/tests/`, `app/repo_ingest/tests/`, `scripts/tests/`, `tests/` (root-level, for `main.py`). **`app/documents/` and `app/graph/` currently have no tests.**
 
 ## Further reading
 

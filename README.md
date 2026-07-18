@@ -72,6 +72,7 @@ QUERY (online, per user question)
  components/chat/         app/api/**/route.ts                  main.py + routers
  components/documents/  →  (same-origin BFF proxy, SSE)  →     /query  /query/stream
                                                                 /agent/query  /documents
+                                                                /ingest/repo  /ingest/files
                                                                           │
                               ┌───────────────┬───────────────┼───────────────┬───────────────┐
                               │               │               │               │               │
@@ -87,7 +88,8 @@ The browser never talks to FastAPI directly — every request goes through Next.
 - **Generation** — grounded, cited answers via versioned Jinja2 prompts, streamed over SSE, with client-side cost accounting per request.
 - **Agentic retrieval** (`POST /agent/query`) — an opt-in iterative retrieve → assess-sufficiency → reformulate loop, capped at 3 iterations.
 - **Graph-augmented retrieval** (`backend/app/graph/`) — Neo4j entity-graph expansion on top of vector search. **Fully built and evaluated, but not wired into the live API** — it's an eval-only alternative retrieval mode today.
-- **Semantic caching** — Redis-backed, cosine-similarity threshold calibrated against real paraphrase pairs, flushed automatically on every document upload.
+- **Semantic caching** — Redis-backed, cosine-similarity threshold calibrated against real paraphrase pairs, flushed automatically on every document/repo ingest.
+- **Repo ingestion** (`POST /ingest/repo`, `POST /ingest/files`) — indexes a GitHub repo into its own hybrid Qdrant collection via a language-aware code chunker, so `/query` can search it with an optional `repo` field. Runs as a background job behind a per-repo lock; `/ingest/files` incrementally re-ingests by diffing against the last ingested commit instead of re-downloading the whole repo.
 - **Tracing** — every query is wrapped in nested Langfuse (v4 OTEL SDK) spans, so cost, latency, and token usage are attached to every request, not just logged separately.
 - **Evaluation** — a first-class part of the system, not an afterthought: retrieval-only eval (`rapidfuzz`-based, avoids embedding-judge bias) and full-pipeline eval (RAGAS, LLM-as-judge) both run against fixed golden datasets, and every pipeline change in `EXPERIMENTS.md` is backed by one of these.
 

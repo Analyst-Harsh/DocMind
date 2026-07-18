@@ -16,7 +16,10 @@ from app.ingestion.indexer import (
     HYBRID_MODEL,
     HYBRID_STRATEGY,
     collection_name_for,
+    get_qdrant_client,
 )
+from app.repo_ingest.router import router as ingest_router
+from app.repo_ingest.service import repo_collection_name
 from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
 from app.streaming.pipeline import stream_query_pipeline
 from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
@@ -24,6 +27,7 @@ from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
 app = FastAPI(title="DocMind", version="0.1.0")
 app.include_router(agent_router)
 app.include_router(documents_router)
+app.include_router(ingest_router)
 settings = get_settings()
 
 
@@ -31,6 +35,23 @@ class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
     hybrid: bool = True
+    # When set, queries a repo ingested via POST /ingest/repo instead of
+    # the fixed docs corpus. Repo collections are hybrid-only (see
+    # app.repo_ingest.service.repo_collection_name), so setting repo
+    # implies hybrid retrieval regardless of the hybrid flag above.
+    repo: str | None = None
+
+
+def _resolve_repo_collection(repo: str) -> str:
+    collection = repo_collection_name(repo, HYBRID_MODEL)
+    client = get_qdrant_client()
+    existing = [c.name for c in client.get_collections().collections]
+    if collection not in existing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Repo {repo!r} has not been ingested — POST /ingest/repo first.",
+        )
+    return collection
 
 
 class QueryResponse(BaseModel):
@@ -54,13 +75,16 @@ def query(request: QueryRequest):
     start_time = time.time()
     cache = get_semantic_cache()
 
-    embedding_model = HYBRID_MODEL if request.hybrid else None
+    is_repo_query = request.repo is not None
+    use_hybrid = request.hybrid or is_repo_query
+    embedding_model = HYBRID_MODEL if use_hybrid else None
     retrieval_mode = (
         "dense"
-        if not request.hybrid
+        if not use_hybrid
         else ("hybrid_rerank" if settings.use_reranker else "hybrid")
     )
     resolved_model = embedding_model or settings.embedding_model
+    cache_scope = request.repo or "docs"
 
     with root_span(
         "docmind-query",
@@ -71,7 +95,9 @@ def query(request: QueryRequest):
 
         with traced_span("cache-check") as cache_span:
             lookup = (
-                cache.check(query_vector, retrieval_mode, resolved_model)
+                cache.check(
+                    query_vector, retrieval_mode, resolved_model, scope=cache_scope
+                )
                 if settings.enable_semantic_cache
                 else CacheLookupResult(hit=None, best_similarity=0.0)
             )
@@ -96,18 +122,23 @@ def query(request: QueryRequest):
                 "retrieval",
                 input={"query": request.question},
             ) as retrieval_span:
-                if request.hybrid:
+                if use_hybrid:
                     retrieve_fn = (
                         retrieve_reranked
                         if settings.use_reranker
                         else retrieve_hybrid
                     )
+                    collection = (
+                        _resolve_repo_collection(request.repo)
+                        if request.repo is not None
+                        else collection_name_for(
+                            HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
+                        )
+                    )
                     chunks = retrieve_fn(
                         query=request.question,
                         top_k=request.top_k,
-                        collection_name=collection_name_for(
-                            HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
-                        ),
+                        collection_name=collection,
                         embedding_model=HYBRID_MODEL,
                         query_vector=query_vector,
                     )
@@ -122,9 +153,7 @@ def query(request: QueryRequest):
                         "num_chunks": len(chunks),
                         "top_score": chunks[0].score if chunks else 0,
                         "chunk_ids": [c.chunk_id for c in chunks],
-                        "reranked": bool(
-                            request.hybrid and settings.use_reranker
-                        ),
+                        "reranked": bool(use_hybrid and settings.use_reranker),
                     }
                 )
 
@@ -162,6 +191,7 @@ def query(request: QueryRequest):
                     ),
                     retrieval_mode,
                     resolved_model,
+                    scope=cache_scope,
                 )
 
         latency_ms = int((time.time() - start_time) * 1000)
@@ -193,19 +223,22 @@ def query_stream(request: QueryRequest):
     trace_id = new_trace_id()
     start_time = time.time()
 
-    embedding_model = HYBRID_MODEL if request.hybrid else None
+    is_repo_query = request.repo is not None
+    use_hybrid = request.hybrid or is_repo_query
+    embedding_model = HYBRID_MODEL if use_hybrid else None
     resolved_model = embedding_model or settings.embedding_model
     retrieval_mode = (
         "dense"
-        if not request.hybrid
+        if not use_hybrid
         else ("hybrid_rerank" if settings.use_reranker else "hybrid")
     )
+    cache_scope = request.repo or "docs"
 
     query_vector = embed_query(request.question, model=embedding_model)
 
     cache = get_semantic_cache()
     cache_lookup = (
-        cache.check(query_vector, retrieval_mode, resolved_model)
+        cache.check(query_vector, retrieval_mode, resolved_model, scope=cache_scope)
         if settings.enable_semantic_cache
         else CacheLookupResult(hit=None, best_similarity=0.0)
     )
@@ -214,16 +247,21 @@ def query_stream(request: QueryRequest):
         chunks: list = []
         sources: list[dict] = cache_lookup.hit.response.sources
     else:
-        if request.hybrid:
+        if use_hybrid:
             retrieve_fn = (
                 retrieve_reranked if settings.use_reranker else retrieve_hybrid
+            )
+            collection = (
+                _resolve_repo_collection(request.repo)
+                if request.repo is not None
+                else collection_name_for(
+                    HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
+                )
             )
             chunks = retrieve_fn(
                 query=request.question,
                 top_k=request.top_k,
-                collection_name=collection_name_for(
-                    HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
-                ),
+                collection_name=collection,
                 embedding_model=HYBRID_MODEL,
                 query_vector=query_vector,
             )
@@ -262,6 +300,7 @@ def query_stream(request: QueryRequest):
             sources=sources,
             resolved_model=resolved_model,
             retrieval_mode=retrieval_mode,
+            cache_scope=cache_scope,
         ),
         media_type="text/event-stream",
         headers={

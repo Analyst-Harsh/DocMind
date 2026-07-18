@@ -59,8 +59,9 @@ class SemanticCache:
         response: CachedResponse,
         retrieval_mode: str,
         embedding_model: str,
+        scope: str = "docs",
     ) -> None:
-        prefix = build_key_prefix(embedding_model, retrieval_mode)
+        prefix = build_key_prefix(embedding_model, retrieval_mode, scope)
         key = f"{prefix}:{uuid.uuid4()}"
         entry = CacheEntry(
             query=query, embedding=embedding, response=response, ts=time()
@@ -81,8 +82,9 @@ class SemanticCache:
         query_embedding: list[float],
         retrieval_mode: str,
         embedding_model: str,
+        scope: str = "docs",
     ) -> CacheLookupResult:
-        prefix = build_key_prefix(embedding_model, retrieval_mode)
+        prefix = build_key_prefix(embedding_model, retrieval_mode, scope)
         best_entry: CacheEntry | None = None
         best_similarity = 0.0
 

@@ -27,6 +27,7 @@ def stream_query_pipeline(
     sources: list[dict],
     resolved_model: str,
     retrieval_mode: str,
+    cache_scope: str = "docs",
 ) -> Iterator[str]:
     """
     Yields SSE-formatted events for the full streaming pipeline.
@@ -104,6 +105,7 @@ def stream_query_pipeline(
                     ),
                     retrieval_mode,
                     resolved_model,
+                    scope=cache_scope,
                 )
 
             latency_ms = int((time.time() - start_time) * 1000)

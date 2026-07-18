@@ -1,4 +1,5 @@
 from .base_chunker import BaseChunker, ChunkStrategy
+from .code_chunker import CodeChunker
 from .fixed_size_chunker import FixedSizeChunker
 from .recursive_chunker import RecursiveChunker
 from .structure_aware_chunker import StructureAwareChunker
@@ -7,6 +8,7 @@ CHUNKER_REGISTRY: dict[ChunkStrategy, type[BaseChunker]] = {
     ChunkStrategy.FIXED_SIZE: FixedSizeChunker,
     ChunkStrategy.RECURSIVE: RecursiveChunker,
     ChunkStrategy.STRUCTURE_AWARE: StructureAwareChunker,
+    ChunkStrategy.CODE: CodeChunker,
 }
 
 

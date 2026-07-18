@@ -26,11 +26,18 @@ from app.ingestion.indexer import (
 from app.ingestion.loader import load_all_documents
 from app.ingestion.sparse_embedder import embed_chunks_sparse
 
+# CODE is a repo-ingestion-only strategy (see app/repo_ingest/) -- it's
+# excluded from "all" so `--strategy all` keeps ingesting just the three
+# prose strategies against the docs corpus, at the same cost as before.
+CORPUS_STRATEGIES = [
+    s.value for s in ChunkStrategy if s != ChunkStrategy.CODE
+]
+
 
 def resolve_targets(strategy: str) -> list[str]:
     all_strategies = [s.value for s in ChunkStrategy]
     if strategy == "all":
-        return all_strategies
+        return CORPUS_STRATEGIES
     if strategy not in all_strategies:
         raise ValueError(f"Unknown strategy: {strategy}")
     return [strategy]

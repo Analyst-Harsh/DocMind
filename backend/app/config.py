@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     neo4j_password: str = "password"
     neo4j_database: str = "neo4j"
 
+    # GitHub repo ingestion settings
+    github_token: str | None = None
+    ingest_job_ttl_seconds: int = 604800  # 7 days
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8"
     )
