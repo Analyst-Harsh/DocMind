@@ -40,6 +40,7 @@ class ChunkStrategy(StrEnum):
     FIXED_SIZE = "fixed_size"
     RECURSIVE = "recursive"
     STRUCTURE_AWARE = "structure_aware"
+    CODE = "code"
 
 
 class BaseChunker(ABC):
