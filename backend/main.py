@@ -7,10 +7,9 @@ from pydantic import BaseModel
 
 from app.agent.router import router as agent_router
 from app.caching.cache import get_semantic_cache
-from app.caching.schema import CachedResponse, CacheLookupResult
+from app.caching.schema import CacheLookupResult
 from app.config import get_settings
 from app.documents.router import router as documents_router
-from app.generation.generator import generate_answer
 from app.ingestion.embedder import embed_query
 from app.ingestion.indexer import (
     HYBRID_MODEL,
@@ -18,11 +17,16 @@ from app.ingestion.indexer import (
     collection_name_for,
     get_qdrant_client,
 )
+from app.query.service import (
+    NoRelevantChunksError,
+    RepoNotIngestedError,
+    run_query,
+)
 from app.repo_ingest.router import router as ingest_router
 from app.repo_ingest.service import repo_collection_name
 from app.retrieval.searcher import retrieve, retrieve_hybrid, retrieve_reranked
 from app.streaming.pipeline import stream_query_pipeline
-from app.tracing.spans import flush_traces, new_trace_id, root_span, traced_span
+from app.tracing.spans import new_trace_id
 
 app = FastAPI(title="DocMind", version="0.1.0")
 app.include_router(agent_router)
@@ -42,7 +46,12 @@ class QueryRequest(BaseModel):
     repo: str | None = None
 
 
-def _resolve_repo_collection(repo: str) -> str:
+def _resolve_repo_collection_for_stream(repo: str) -> str:
+    """POST /query/stream's own copy of the repo-resolution check --
+    kept separate from app.query.service's version (which raises a
+    domain exception for /query and the MCP tools) so streaming's
+    behavior stays untouched; /query/stream is out of scope for the
+    app.query.service extraction."""
     collection = repo_collection_name(repo, HYBRID_MODEL)
     client = get_qdrant_client()
     existing = [c.name for c in client.get_collections().collections]
@@ -70,150 +79,25 @@ def health():
 
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
-    trace_id = new_trace_id()
-
-    start_time = time.time()
-    cache = get_semantic_cache()
-
-    is_repo_query = request.repo is not None
-    use_hybrid = request.hybrid or is_repo_query
-    embedding_model = HYBRID_MODEL if use_hybrid else None
-    retrieval_mode = (
-        "dense"
-        if not use_hybrid
-        else ("hybrid_rerank" if settings.use_reranker else "hybrid")
-    )
-    resolved_model = embedding_model or settings.embedding_model
-    cache_scope = request.repo or "docs"
-
-    with root_span(
-        "docmind-query",
-        trace_id,
-        input={"question": request.question, "top_k": request.top_k},
-    ) as root:
-        query_vector = embed_query(request.question, model=embedding_model)
-
-        with traced_span("cache-check") as cache_span:
-            lookup = (
-                cache.check(
-                    query_vector, retrieval_mode, resolved_model, scope=cache_scope
-                )
-                if settings.enable_semantic_cache
-                else CacheLookupResult(hit=None, best_similarity=0.0)
-            )
-            cache_span.update(
-                output={
-                    "cache_hit": lookup.hit is not None,
-                    "similarity": lookup.best_similarity,
-                    "matched_query": lookup.hit.query if lookup.hit else None,
-                }
-            )
-
-        if lookup.hit:
-            answer = lookup.hit.response.answer
-            sources = lookup.hit.response.sources
-            # The cached cost_usd is what the answer originally cost to
-            # generate, not what this request cost -- a hit makes no LLM
-            # call, so the true marginal cost here is 0.
-            cost_usd = 0.0
-            cache_hit = True
-        else:
-            with traced_span(
-                "retrieval",
-                input={"query": request.question},
-            ) as retrieval_span:
-                if use_hybrid:
-                    retrieve_fn = (
-                        retrieve_reranked
-                        if settings.use_reranker
-                        else retrieve_hybrid
-                    )
-                    collection = (
-                        _resolve_repo_collection(request.repo)
-                        if request.repo is not None
-                        else collection_name_for(
-                            HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True
-                        )
-                    )
-                    chunks = retrieve_fn(
-                        query=request.question,
-                        top_k=request.top_k,
-                        collection_name=collection,
-                        embedding_model=HYBRID_MODEL,
-                        query_vector=query_vector,
-                    )
-                else:
-                    chunks = retrieve(
-                        query=request.question,
-                        top_k=request.top_k,
-                        query_vector=query_vector,
-                    )
-                retrieval_span.update(
-                    output={
-                        "num_chunks": len(chunks),
-                        "top_score": chunks[0].score if chunks else 0,
-                        "chunk_ids": [c.chunk_id for c in chunks],
-                        "reranked": bool(use_hybrid and settings.use_reranker),
-                    }
-                )
-
-            if not chunks:
-                root.update(output={"error": "no_chunks_found"})
-                flush_traces()
-                raise HTTPException(
-                    status_code=404, detail="No relevant documents found"
-                )
-
-            # generate_answer owns its own "answer-generation" span (nests under
-            # this retrieval span's parent automatically via OTEL context).
-            result = generate_answer(question=request.question, chunks=chunks)
-            answer = result.answer
-            cost_usd = result.cost_usd
-            cache_hit = False
-            sources = [
-                {
-                    "chunk_id": c.chunk_id,
-                    "doc_id": c.doc_id,
-                    "doc_title": c.doc_title,
-                    "chunk_index": c.chunk_index,
-                    "score": c.score,
-                    "source_path": c.source_path,
-                }
-                for c in chunks
-            ]
-
-            if settings.enable_semantic_cache:
-                cache.write(
-                    request.question,
-                    query_vector,
-                    CachedResponse(
-                        answer=answer, sources=sources, cost_usd=cost_usd
-                    ),
-                    retrieval_mode,
-                    resolved_model,
-                    scope=cache_scope,
-                )
-
-        latency_ms = int((time.time() - start_time) * 1000)
-
-        root.update(
-            output={"answer": answer},
-            metadata={
-                "cost_usd": cost_usd,
-                "latency_ms": latency_ms,
-                "cache_hit": cache_hit,
-            },
+    try:
+        result = run_query(
+            question=request.question,
+            top_k=request.top_k,
+            hybrid=request.hybrid,
+            repo=request.repo,
         )
-
-    flush_traces()
+    except RepoNotIngestedError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except NoRelevantChunksError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return QueryResponse(
-        answer=answer,
-        sources=sources,
-        cost_usd=cost_usd,
-        latency_ms=latency_ms,
-        trace_id=trace_id,
-        cache_hit=cache_hit,
+        answer=result.answer,
+        sources=result.sources,
+        cost_usd=result.cost_usd,
+        latency_ms=result.latency_ms,
+        trace_id=result.trace_id,
+        cache_hit=result.cache_hit,
     )
 
 
@@ -252,7 +136,7 @@ def query_stream(request: QueryRequest):
                 retrieve_reranked if settings.use_reranker else retrieve_hybrid
             )
             collection = (
-                _resolve_repo_collection(request.repo)
+                _resolve_repo_collection_for_stream(request.repo)
                 if request.repo is not None
                 else collection_name_for(
                     HYBRID_STRATEGY, HYBRID_MODEL, hybrid=True

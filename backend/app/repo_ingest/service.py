@@ -7,7 +7,10 @@ since nothing upstream is watching for exceptions once the request has
 already returned 202.
 """
 
+import re
 import tempfile
+import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,7 +38,7 @@ from app.repo_ingest.filters import (
     is_ingestable_path,
     iter_ingestable_files,
 )
-from app.repo_ingest.job_store import get_job_store
+from app.repo_ingest.job_store import IngestJob, JobStore, get_job_store
 
 log = get_logger(__name__)
 settings = get_settings()
@@ -45,6 +48,24 @@ settings = get_settings()
 # many *ingestable* changes are worth applying one-by-one via the contents
 # API before a single tarball fetch is cheaper.
 INCREMENTAL_FILE_THRESHOLD = 50
+
+REPO_PATTERN = re.compile(r"^[\w.-]+/[\w.-]+$")
+
+
+class InvalidRepoFormatError(ValueError):
+    def __init__(self, repo: str):
+        self.repo = repo
+        super().__init__("repo must be in 'owner/name' form")
+
+
+class RepoLockedError(Exception):
+    def __init__(self, repo: str, holder_job_id: str):
+        self.repo = repo
+        self.holder_job_id = holder_job_id
+        super().__init__(
+            f"An ingest is already running for {repo!r} "
+            f"(job_id={holder_job_id!r})"
+        )
 
 
 def repo_collection_name(repo: str, model: str) -> str:
@@ -58,6 +79,50 @@ def repo_collection_name(repo: str, model: str) -> str:
     safe_repo = repo.replace("/", "-").lower()
     safe_model = model.replace("/", "-")
     return f"{settings.qdrant_collection}_repo_{safe_repo}_{safe_model}_hybrid"
+
+
+def prepare_ingest_job(
+    repo: str,
+    ref: str | None,
+    job_type: str,
+    job_store_factory: Callable[[], JobStore],
+) -> IngestJob:
+    """
+    Shared setup for POST /ingest/repo, POST /ingest/files, and the MCP
+    ingest_repo/sync_repo_incremental tools: validates repo format,
+    resolves ref -> commit SHA, acquires the per-repo lock, and creates
+    the job record. Does NOT schedule the actual ingestion work -- callers
+    decide how (FastAPI BackgroundTasks vs. the MCP server's own bounded
+    thread pool).
+
+    job_store_factory is called lazily, only after the repo-format check
+    passes -- same evaluation order the original router-level
+    _accept_ingest_job used, so a malformed repo never even constructs a
+    JobStore.
+
+    Raises InvalidRepoFormatError, github.GithubNotFoundError,
+    github.GithubAuthError, github.GithubRateLimitedError, or
+    RepoLockedError. Callers map these to their own error surface
+    (HTTPException for the router, a plain exception for MCP tools).
+    """
+    if not REPO_PATTERN.match(repo):
+        raise InvalidRepoFormatError(repo)
+
+    resolved_ref, commit_sha = github.resolve_commit_sha(repo, ref)
+
+    job_store = job_store_factory()
+
+    # Mint the job id before creating the record, so a lock conflict never
+    # leaves an orphan job that nothing will ever run (see
+    # JobStore.create_job's job_id docstring).
+    job_id = uuid.uuid4().hex
+    holder = job_store.acquire_repo_lock(repo, job_id)
+    if holder is not None:
+        raise RepoLockedError(repo, holder)
+
+    return job_store.create_job(
+        job_type, repo, resolved_ref, commit_sha, job_id=job_id
+    )
 
 
 def run_full_ingest(job_id: str, repo: str, ref: str, commit_sha: str) -> None:

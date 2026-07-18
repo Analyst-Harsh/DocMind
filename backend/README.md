@@ -120,6 +120,41 @@ backend/
 | `POST` | `/ingest/files` | `app/repo_ingest/router.py` | Same request/response shape; incrementally re-ingests a repo by diffing against the last ingested commit instead of re-downloading the whole tarball |
 | `GET` | `/ingest/status/{job_id}` | `app/repo_ingest/router.py` | Job status (`pending`/`running`/`completed`/`failed`) plus file/chunk counters |
 
+## MCP server
+
+`app/mcp/` exposes 4 of the operations above as [MCP](https://modelcontextprotocol.io) tools over stdio, for use from an MCP-aware client (Claude Code, Claude Desktop) instead of the HTTP API directly:
+
+| Tool | Wraps | Notes |
+|---|---|---|
+| `ingest_repo(repo, ref?)` | `POST /ingest/repo` | Full ingest; returns a `job_id` immediately |
+| `sync_repo_incremental(repo, ref?)` | `POST /ingest/files` | Incremental re-ingest; much cheaper once a repo is already indexed |
+| `get_ingest_status(job_id)` | `GET /ingest/status/{job_id}` | Poll a job started by either ingest tool |
+| `query_repo(repo, question, top_k?)` | `POST /query` (with `repo` set) | Hybrid+reranked Q&A against an already-ingested repo |
+
+**Not exposed**: docs-corpus query, `/agent/query`, `/documents` catalog/upload, `/query/stream` — out of scope for this tool surface. The 4 tools are thin wrappers around the same service-layer functions (`app/query/service.py::run_query`, `app/repo_ingest/service.py::prepare_ingest_job`/`run_full_ingest`/`run_incremental_ingest`) the HTTP routes call, so behavior (validation, locking, tracing) is identical either way.
+
+Run it from `backend/` (same `.env` as the FastAPI app — no separate config), matching this project's `python -m` convention for every other entrypoint (`scripts.download_corpus`, `scripts.ingest`, ...):
+
+```bash
+uv run python -m app.mcp.server
+```
+
+Example client config (same shape for Claude Code's `.mcp.json` and Claude Desktop's `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "docmind": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "app.mcp.server"],
+      "cwd": "/absolute/path/to/DocMind/backend"
+    }
+  }
+}
+```
+
+No auth is required or enforced — stdio's trust boundary is "whoever can spawn this local subprocess," matching the rest of this no-auth, local-dev-only backend. To manually inspect the 4 tools/schemas without a full client, use FastMCP's own bundled CLI: `PYTHONPATH=. uv run fastmcp inspect app/mcp/server.py` (add `--format fastmcp` for the full JSON report). `PYTHONPATH=.` is required because the CLI loads `app/mcp/server.py` as a standalone file rather than via `python -m`, so `backend/` needs to be on `sys.path` explicitly for its `app.*` imports to resolve — the server itself doesn't need this when run via `python -m app.mcp.server`, which already puts the current directory on `sys.path`.
+
 ## Setup & running
 
 Requires Python 3.13, [`uv`](https://docs.astral.sh/uv/), Docker, an OpenAI API key, and a Langfuse project.
@@ -153,6 +188,7 @@ uvicorn main:app --reload                  # serves on :8000
 | `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` | no | `bolt://localhost:7687` / `neo4j` / `password` | GraphRAG (eval scripts only) |
 | `GITHUB_TOKEN` | no | — | Fine-grained PAT for repo ingestion. Without it, only public repos work and the GitHub API is capped at 60 req/hr (vs. 5000/hr authenticated) |
 | `INGEST_JOB_TTL_SECONDS` | no | `604800` (7 days) | How long a repo-ingestion job record stays queryable via `GET /ingest/status/{job_id}` after it finishes |
+| `MCP_INGEST_MAX_CONCURRENCY` | no | `2` | Max concurrent repo-ingest jobs the MCP server (`app/mcp/`) will run at once, across repos |
 
 See [`.env.example`](./.env.example) for a ready-to-copy template. The four "required" variables above have no defaults — the app will fail to start without them.
 
